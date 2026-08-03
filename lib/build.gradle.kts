@@ -51,29 +51,37 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = "com.gios"
-            artifactId = "light-common"
-            version = libraryVersion
-            afterEvaluate { from(components["release"]) }
-            pom {
-                name.set("light-common")
-                description.set("Shared LightOS app plumbing: shake-to-report, hardware keys, the wheel, and the type/colour basics.")
-                url.set("https://github.com/gi-os/light-common")
+// Publication wiring sits inside a top-level afterEvaluate: the "release" software component
+// is created by the Android plugin during its own afterEvaluate, so resolving it any earlier
+// finds nothing and the publish task fails with "SoftwareComponent with name 'release' not found".
+afterEvaluate {
+    publishing {
+        publications {
+            register<MavenPublication>("release") {
+                groupId = "com.gios"
+                artifactId = "light-common"
+                version = libraryVersion
+                from(components["release"])
+                pom {
+                    name.set("light-common")
+                    description.set(
+                        "Shared LightOS app plumbing: shake-to-report, hardware keys, " +
+                            "the wheel, and the type/colour basics.",
+                    )
+                    url.set("https://github.com/gi-os/light-common")
+                }
             }
         }
-    }
-    repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/gi-os/light-common")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                    ?: providers.gradleProperty("gpr.user").orNull
-                password = System.getenv("GITHUB_TOKEN")
-                    ?: providers.gradleProperty("gpr.key").orNull
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/gi-os/light-common")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR")
+                        ?: providers.gradleProperty("gpr.user").orNull
+                    password = System.getenv("GITHUB_TOKEN")
+                        ?: providers.gradleProperty("gpr.key").orNull
+                }
             }
         }
     }

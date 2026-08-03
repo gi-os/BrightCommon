@@ -15,7 +15,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # contents: write, not read — the last step creates the GitHub release, and a release is
+  # a write to repository contents. packages: write is for the Maven artifact itself.
+  contents: write
   packages: write
 
 jobs:
