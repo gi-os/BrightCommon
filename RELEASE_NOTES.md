@@ -1,30 +1,25 @@
-## light-common v1.0.1 — The first version that actually published
+## light-common 1.1.0 — the wheel, actually a superset this time
 
-Same code as the 1.0.0 tag. 1.0.0 is a broken publish and should not be used.
+**1.0.0 claimed `hw/` was the superset of all ten wheel variants. It was not.** Four things the
+apps had and the library did not, found by comparing every declaration rather than by reading the
+files:
 
-The first publish run uploaded the `.aar` to GitHub Packages and *then* failed, because the
-job asked for `contents: read` while its last step creates a GitHub release — which is a write.
-Fixing that and re-tagging did not work either: Maven artifacts are immutable, so re-publishing
-the same version returns `409 Conflict`, which is the registry doing exactly what it should.
+- **Pressed turns.** Roll's wheel is two controls: a bare turn is zoom, a turn with the wheel held
+  in is exposure compensation. `WheelBus` now carries both — `notches` and `pressedNotches`, with
+  `send(notches, pressed = false)`. Two flows rather than a flag, because a screen that wants one
+  of them should not have to filter the other out of its own callback.
+- **`WheelTurns`.** Raw notches for a control that is not a scroller, with `armed` (the
+  stray-notch guard) and `pressed`. This was already the shape of the library's private
+  `ArmedNotches`, which is now a one-line call to it.
+- **`reverse` on `WheelScroll`.** Roll's grid and LightChat's thread run the other way. Defaulted
+  false, so nothing else changes.
+- **`WheelGate`.** Phono kills the wheel for a whole subtree when a modal is up. Reads in
+  composition rather than in the effect, so closing the gate tears the collector down instead of
+  leaving it running behind a dead screen. Defaults to on: an app that never calls it is
+  unaffected.
 
-So this release carries the two fixes and a version number that is free:
+`WheelSteps` was left alone and is the one place where migrating is not a straight swap. The
+library banks notches and rate-limits them; FastRead's copy stepped once per notch. Its call sites
+now pass `notchesPerStep = 1, minIntervalMs = 0` to keep the behaviour they had.
 
-- `contents: write` on the publish job.
-- The publication resolves `components["release"]` inside a top-level `afterEvaluate`. That
-  software component is created by the Android plugin during its own `afterEvaluate`, so
-  resolving it from a block nested inside `register<MavenPublication>` can find nothing.
-
-The 1.0.0 package version is a partial upload of unknown completeness. Delete it rather than
-leave it resolvable.
-
-### What is in it
-
-Three packages. `report` is shake-to-report: the corner chip, the sheet with the note field, the
-disk queue, the crash handler, the shake gesture and its tests. `hw` is `LightKeys` and the wheel,
-as the superset of every variant in the wild. `theme` is the Akkurat font lookup and the three
-greys.
-
-Configuration is the one thing that changed shape from the vendored copies. `BuildConfig` does not
-cross a library boundary, so `LightReport.install()` takes the app's name, label and token as
-arguments. That is the better shape anyway: the token stays a build-time secret in the app that
-owns it.
+No change to `report/` or `theme/`.

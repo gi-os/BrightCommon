@@ -7,6 +7,8 @@ import android.view.Window
 import android.webkit.WebView
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,12 +42,41 @@ import kotlinx.coroutines.flow.asSharedFlow
  */
 class WheelBus {
     private val _notches = MutableSharedFlow<Int>(extraBufferCapacity = 64)
+    private val _pressedNotches = MutableSharedFlow<Int>(extraBufferCapacity = 64)
+
+    /** Bare turns. */
     val notches: SharedFlow<Int> = _notches.asSharedFlow()
 
-    fun send(notches: Int) {
-        _notches.tryEmit(notches)
+    /**
+     * Turns made with the wheel held in.
+     *
+     * A separate flow rather than a flag on the same one, because the two are different
+     * controls to the screen receiving them: on Roll's viewfinder a bare turn is zoom and a
+     * pressed turn is exposure compensation, and a screen that only wants one of them should
+     * not have to filter the other out of its own callback.
+     */
+    val pressedNotches: SharedFlow<Int> = _pressedNotches.asSharedFlow()
+
+    fun send(notches: Int, pressed: Boolean = false) {
+        if (pressed) _pressedNotches.tryEmit(notches) else _notches.tryEmit(notches)
     }
 }
+
+/**
+ * Turn the wheel on or off for everything composed inside.
+ *
+ * Nests: an inner value replaces an outer one for its own subtree, so a modal can kill the
+ * wheel without knowing which screen is underneath it. Composition only — no layout node, so
+ * it cannot affect measurement.
+ *
+ * Defaults to on, so an app that never calls this is unaffected.
+ */
+@Composable
+fun WheelGate(active: Boolean, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalWheelActive provides active, content = content)
+}
+
+private val LocalWheelActive = compositionLocalOf { true }
 
 val LocalWheelBus = staticCompositionLocalOf<WheelBus?> { null }
 
@@ -96,13 +127,14 @@ private const val IDLE_MS = 1_500L
  * Point the wheel at a Compose scroller. Works for both `ScrollState` and `LazyListState`.
  */
 @Composable
-fun WheelScroll(state: ScrollableState, active: Boolean = true) {
+fun WheelScroll(state: ScrollableState, active: Boolean = true, reverse: Boolean = false) {
     val step = with(LocalDensity.current) { NOTCH.toPx() }
     val debt = remember { Debt() }
+    val direction = if (reverse) -DIRECTION else DIRECTION
     val wake = remember { Channel<Unit>(Channel.CONFLATED) }
 
     ArmedNotches(active) { notches ->
-        debt.px += notches * step * DIRECTION
+        debt.px += notches * step * direction
         wake.trySend(Unit)
     }
 
@@ -132,13 +164,14 @@ fun WheelScroll(state: ScrollableState, active: Boolean = true) {
 
 /** The same, for the reader's WebView, which Compose knows nothing about. */
 @Composable
-fun WheelScroll(web: WebView?, active: Boolean = true) {
+fun WheelScroll(web: WebView?, active: Boolean = true, reverse: Boolean = false) {
     val step = with(LocalDensity.current) { NOTCH.toPx() }
     val debt = remember { Debt() }
+    val direction = if (reverse) -DIRECTION else DIRECTION
     val wake = remember { Channel<Unit>(Channel.CONFLATED) }
 
     ArmedNotches(active && web != null) { notches ->
-        debt.px += notches * step * DIRECTION
+        debt.px += notches * step * direction
         wake.trySend(Unit)
     }
 
@@ -273,38 +306,62 @@ private fun View.dialogWindow(): Window? {
     return null
 }
 
+/** Notches, minus the stray ones — [WheelTurns] with the guard on. See [ARM_NOTCHES]. */
+@Composable
+private fun ArmedNotches(active: Boolean, onNotch: (Int) -> Unit) =
+    WheelTurns(active = active, armed = true, onNotch = onNotch)
+
 /**
- * Notches, minus the stray ones. See [ARM_NOTCHES].
+ * Raw notches, for a control that is not a scroller.
+ *
+ * [armed] false is for controls where every notch has to count and a stray one is harmless —
+ * stepping through filters, say, where the worst case is one wrong name on screen. Zoom and
+ * exposure use the guard, because a stray notch there changes the photo.
+ *
+ * [pressed] listens to turns made with the wheel held in instead of bare ones.
  *
  * Armed state lives in the effect rather than in composition state: it is a property of the
  * turn in progress, and a recomposition mid-turn should not disarm the wheel.
  */
 @Composable
-private fun ArmedNotches(active: Boolean, onNotch: (Int) -> Unit) {
+fun WheelTurns(
+    active: Boolean = true,
+    armed: Boolean = false,
+    pressed: Boolean = false,
+    onNotch: (Int) -> Unit,
+) {
     val handler by rememberUpdatedState(onNotch)
     val bus = LocalWheelBus.current ?: return
-    LaunchedEffect(bus, active) {
-        if (!active) return@LaunchedEffect
-        var armed = false
+    // A gate anywhere above this point wins. Read in composition, not in the effect, so
+    // closing the gate restarts the effect rather than leaving a live collector behind.
+    val live = active && LocalWheelActive.current
+    LaunchedEffect(bus, live, armed, pressed) {
+        if (!live) return@LaunchedEffect
+        val flow = if (pressed) bus.pressedNotches else bus.notches
+        if (!armed) {
+            flow.collect { handler(it) }
+            return@LaunchedEffect
+        }
+        var isArmed = false
         var held = 0
         var count = 0
         var last = 0L
-        bus.notches.collect { notches ->
+        flow.collect { notches ->
             val now = System.nanoTime() / 1_000_000
             if (now - last > IDLE_MS) {
-                armed = false
+                isArmed = false
                 held = 0
                 count = 0
             }
             last = now
-            if (armed) {
+            if (isArmed) {
                 handler(notches)
                 return@collect
             }
             held += notches
             count++
             if (count >= ARM_NOTCHES) {
-                armed = true
+                isArmed = true
                 // Release what the guard was holding, so nothing deliberate is lost.
                 if (held != 0) handler(held) else handler(notches.sign)
                 held = 0

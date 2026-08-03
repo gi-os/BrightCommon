@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.0.1")
+implementation("com.gios:light-common:1.1.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous
@@ -88,11 +88,23 @@ It draws in its own window, so it does not care what layout it is called from.
 ```kotlin
 CompositionLocalProvider(LocalWheelBus provides wheel) { ... }
 
-WheelScroll(listState)          // any ScrollableState
-WheelScroll(webView)            // WebViews scroll differently
-WheelSteps(onStep = { ... })    // discrete steps rather than pixels
-WheelInDialog()                 // inside a Dialog or ModalBottomSheet — see below
+WheelScroll(listState)                    // any ScrollableState
+WheelScroll(listState, reverse = true)    // wheel up moves up the list
+WheelScroll(webView)                      // WebViews scroll differently
+WheelSteps(onStep = { ... })              // discrete steps rather than pixels
+WheelTurns(armed = true) { notches -> }   // raw notches: zoom, exposure, a filter list
+WheelTurns(pressed = true) { notches -> } // turns made with the wheel held in
+WheelInDialog()                           // inside a Dialog or ModalBottomSheet — see below
+WheelGate(active = !modalOpen) { ... }    // kill the wheel for a whole subtree
 ```
+
+`armed` is the stray-notch guard: two notches to start, on by default for scrollers and off by
+default for `WheelTurns`. Leave it off where every notch must count and a wrong one is harmless
+(stepping a filter list); turn it on where a stray notch changes something (zoom, exposure).
+
+`WheelSteps` banks notches and rate-limits them, because the sensor fires faster than anyone can
+read a moving highlight. For a control that really does want one step per notch, pass
+`notchesPerStep = 1, minIntervalMs = 0`.
 
 A Compose `Dialog` — and a `ModalBottomSheet`, which is one underneath — is a window of its own.
 Keys go to whichever window has focus, so while a sheet is up the activity never sees them and
