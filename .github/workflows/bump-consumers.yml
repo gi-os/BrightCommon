@@ -1,0 +1,92 @@
+name: Bump consumers
+
+# What makes this library actually propagate.
+#
+# Publishing alone does not reach anybody: every consumer pins a version, so without this a fix
+# here means opening thirteen repos by hand — which is the exact problem the library exists to
+# remove, moved one level up. On a release this opens a pull request in each consumer bumping
+# the pinned version, and their own check workflow tells you whether it is safe to merge.
+#
+# Pull requests rather than pushes, deliberately. A push to a consumer's default branch cuts a
+# release onto Gio's phone, and a library bump is precisely the change that should be compiled
+# before it does that.
+#
+# Needs CONSUMER_BUMP_TOKEN: a PAT with contents+pull-requests write on the consumer repos.
+# GITHUB_TOKEN cannot be used — its write access stops at this repository.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to bump consumers to (without the leading v)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    strategy:
+      # One failure should not hide the other twelve.
+      fail-fast: false
+      matrix:
+        repo:
+          - LightSports
+          - LightChat
+          - LightRemote
+          - LightNews
+          - LightVoice
+          - LightControl
+          - LightNoise
+          - LightFastread
+          - LightPass
+          - LightTip
+          - LightCamera
+          - LightNotebook
+          - LightPhono
+    steps:
+      - name: Work out the version
+        id: v
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -n "$V" ] || V="${GITHUB_REF_NAME#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Open a bump PR
+        env:
+          GH_TOKEN: ${{ secrets.CONSUMER_BUMP_TOKEN }}
+          V: ${{ steps.v.outputs.version }}
+          REPO: ${{ matrix.repo }}
+        run: |
+          set -euo pipefail
+          # Clone in /tmp — never into a synced folder, and never reuse a checkout.
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/gi-os/${REPO}.git" /tmp/c
+          cd /tmp/c
+
+          CURRENT=$(grep -rhoE 'com\.gios:light-common:[0-9]+\.[0-9]+\.[0-9]+' . --include=*.kts --include=*.toml | head -1 | sed 's/.*://')
+          if [ -z "$CURRENT" ]; then
+            echo "::notice::${REPO} does not depend on light-common yet — nothing to bump"
+            exit 0
+          fi
+          if [ "$CURRENT" = "$V" ]; then
+            echo "::notice::${REPO} is already on $V"
+            exit 0
+          fi
+
+          BRANCH="chore/light-common-$V"
+          git checkout -q -b "$BRANCH"
+          grep -rlE "com\.gios:light-common:${CURRENT}" . --include=*.kts --include=*.toml \
+            | xargs sed -i "s/com\.gios:light-common:${CURRENT}/com.gios:light-common:${V}/g"
+
+          git config user.email "g.lupo@lrparis.com"
+          git config user.name "Giovanni Lupo"
+          git commit -qam "Bump light-common ${CURRENT} -> ${V}"
+          git push -q -u origin "$BRANCH"
+
+          gh pr create \
+            --repo "gi-os/${REPO}" \
+            --head "$BRANCH" \
+            --title "Bump light-common ${CURRENT} → ${V}" \
+            --body "$(printf 'Automated bump from the light-common %s release.\n\nWhat changed is in the [release notes](https://github.com/gi-os/light-common/releases/tag/v%s).\n\nMerging this cuts a release onto the phone, so let the check workflow finish first.' "$V" "$V")"
