@@ -1,18 +1,30 @@
-## light-common v1.0.0 — The first version
+## light-common v1.0.1 — The first version that actually published
 
-**The plumbing every Light app was carrying its own copy of, in one place.**
+Same code as the 1.0.0 tag. 1.0.0 is a broken publish and should not be used.
+
+The first publish run uploaded the `.aar` to GitHub Packages and *then* failed, because the
+job asked for `contents: read` while its last step creates a GitHub release — which is a write.
+Fixing that and re-tagging did not work either: Maven artifacts are immutable, so re-publishing
+the same version returns `409 Conflict`, which is the registry doing exactly what it should.
+
+So this release carries the two fixes and a version number that is free:
+
+- `contents: write` on the publish job.
+- The publication resolves `components["release"]` inside a top-level `afterEvaluate`. That
+  software component is created by the Android plugin during its own `afterEvaluate`, so
+  resolving it from a block nested inside `register<MavenPublication>` can find nothing.
+
+The 1.0.0 package version is a partial upload of unknown completeness. Delete it rather than
+leave it resolvable.
+
+### What is in it
 
 Three packages. `report` is shake-to-report: the corner chip, the sheet with the note field, the
-disk queue, the crash handler and the shake gesture. `hw` is `LightKeys` and the wheel — the
-superset of every variant that was in the wild, so an app that had the small one loses nothing
-and an app that had the big one gains nothing it did not already have. `theme` is the Akkurat
-font lookup and the three greys.
+disk queue, the crash handler, the shake gesture and its tests. `hw` is `LightKeys` and the wheel,
+as the superset of every variant in the wild. `theme` is the Akkurat font lookup and the three
+greys.
 
-This replaces roughly 42,000 redundant lines. `LightKeys.kt` was byte-identical in fifteen repos.
-`Wheel.kt` had ten variants, which sounds like divergence and was not — the differences were
-purely additive, and the shared core was identical everywhere it appeared.
-
-The one thing that changed shape in the move is configuration. `BuildConfig` does not cross a
-library boundary, so `LightReport.install()` takes the app's name, label and token as arguments
-rather than reading them. That is the better shape anyway: the token stays a build-time secret in
-the app that owns it, and nothing here needs to know how it got there.
+Configuration is the one thing that changed shape from the vendored copies. `BuildConfig` does not
+cross a library boundary, so `LightReport.install()` takes the app's name, label and token as
+arguments. That is the better shape anyway: the token stays a build-time secret in the app that
+owns it.
