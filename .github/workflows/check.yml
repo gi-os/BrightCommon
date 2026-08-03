@@ -1,8 +1,11 @@
 name: Check
 
+# Runs on every branch including main, unlike the apps' version of this file. There the
+# default branch is excluded because a push to it publishes an APK, so main is checked by
+# the release build itself. Here publishing is tag-gated, so main would otherwise never be
+# compiled at all — and main is the branch consumers are told to trust.
 on:
   push:
-    branches-ignore: [main]
   pull_request:
   workflow_dispatch:
 
