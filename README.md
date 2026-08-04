@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.1.0")
+implementation("com.gios:light-common:1.2.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous
@@ -82,6 +82,26 @@ setContent {
 ```
 
 It draws in its own window, so it does not care what layout it is called from.
+
+`ReportOverlay` photographs the app's own window when an offer is raised — before the chip covers
+anything — and the picture rides in the issue body as base64. No permission is involved: this is
+the app looking at itself, not screen capture. A crash offer has no picture, because the screen
+after a relaunch is not the screen that died.
+
+**3b. The sensor readout, if you want it.**
+
+```kotlin
+DisposableEffect(Unit) {
+    ShakeMonitor.watch()
+    onDispose { ShakeMonitor.unwatch() }
+}
+val reading by ShakeMonitor.reading.collectAsState()
+// reading.magnitudeG, reading.peakG, reading.turns, reading.turnsNeeded, reading.fires
+```
+
+For a settings screen. "I shook it and nothing happened" is unanswerable from outside the phone;
+"it peaked at 1.2g and needs 1.38g" is something you can act on. Nothing is published while
+`watchers` is zero, so an app that never calls `watch()` pays nothing for this.
 
 **4. The wheel, if you use it.**
 

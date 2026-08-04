@@ -63,6 +63,7 @@ object Reports {
         screen: String,
         crash: String?,
         failure: Failure? = null,
+        shot: String? = null,
     ): Report {
         val version = versionName(context)
         val trimmed = note.trim()
@@ -103,6 +104,22 @@ object Reports {
             appendLine("| Free space | ${megabytes(context.filesDir.freeSpace)} |")
             appendLine("| Heap | ${megabytes(usedHeap())} of ${megabytes(Runtime.getRuntime().maxMemory())} |")
             appendLine()
+            if (shot != null) {
+                // Inside the issue body as base64 rather than committed to the repo or uploaded:
+                // the token only needs issue write, and a report stays one HTTP request that
+                // either lands or queues. See Screenshot for the size ladder that keeps this
+                // under GitHub's 65536-character body limit.
+                appendLine("### The screen at the time")
+                appendLine()
+                appendLine("<details><summary>Screenshot (base64 PNG, greyscale)</summary>")
+                appendLine()
+                appendLine("<!-- decode: base64 -d > shot.png -->")
+                appendLine()
+                appendLine(shot)
+                appendLine()
+                appendLine("</details>")
+                appendLine()
+            }
             appendLine("### Last crash")
             appendLine()
             if (crash.isNullOrBlank()) {

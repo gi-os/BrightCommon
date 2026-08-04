@@ -9,12 +9,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import android.app.Activity
 import android.content.ContextWrapper
+import android.graphics.Bitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The whole reporting feature, as one line in `MainActivity`.
@@ -61,20 +65,57 @@ fun ReportOverlay() {
             .firstOrNull()
     }
 
+    // The window is what gets photographed. Walked out of the Context the same way as the
+    // lifecycle owner above, and null is a supported answer — a report with no picture is still
+    // a report, and this module is installed in at least one app with no Activity above it.
+    val window = remember(context) {
+        generateSequence(context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+            ?.window
+    }
+
     // Two states, not one. `pending` is the offer in the corner; `sheetOpen` is the answer to it.
     // Collapsing them is what made the first version interrupt: a shake the phone misread put a
     // sheet over whatever you were reading, and the only way out was to dismiss it.
     var pending by remember { mutableStateOf<ReportReason?>(null) }
     var sheetOpen by remember { mutableStateOf(false) }
+    var shot by remember { mutableStateOf<Bitmap?>(null) }
     val failure by Trouble.latest.collectAsState()
 
     // Read once. The file is deleted as soon as it has been offered, so that a crash is asked
     // about on the next launch and not on every launch after it.
     val crash = remember { CrashLog.read(context) }
 
+    // Take the picture, then ask. The chip is about to sit on top of whatever looked wrong, and
+    // by the time the sheet is up the screen being reported on is gone — so the capture happens
+    // at the moment of the shake and waits on disk-free memory until it is either sent or
+    // dropped. PixelCopy is asynchronous, hence the offer being raised from its callback rather
+    // than beside it.
+    val raise: (ReportReason) -> Unit = remember(window) {
+        { reason ->
+            if (window == null) {
+                pending = reason
+            } else {
+                Screenshot.capture(window) { bitmap ->
+                    shot?.recycle()
+                    shot = bitmap
+                    pending = reason
+                }
+            }
+        }
+    }
+
+    // Dropping an offer drops its picture with it. Bitmaps are large enough that holding one
+    // for a report nobody sent is worth avoiding.
+    val drop: () -> Unit = {
+        shot?.recycle()
+        shot = null
+    }
+
     val detector = remember {
         ShakeDetector(context) {
-            if (pending == null && !sheetOpen) pending = ReportReason.Shaken
+            if (pending == null && !sheetOpen) raise(ReportReason.Shaken)
         }
     }
 
@@ -82,13 +123,15 @@ fun ReportOverlay() {
     // that had no token at all — goes out now.
     LaunchedEffect(Unit) {
         runCatching { Reports.flush(context) }
+        // No screenshot for this one: the app died and relaunched, so the screen now is the
+        // one you are looking at rather than the one that broke.
         if (!crash.isNullOrBlank()) pending = ReportReason.Crashed
     }
 
     // A failure the app noticed itself only raises the offer if nothing else already has:
     // being asked about a stale feed on top of a crash report is how people turn this off.
     LaunchedEffect(failure) {
-        if (failure != null && pending == null && !sheetOpen) pending = ReportReason.Failed
+        if (failure != null && pending == null && !sheetOpen) raise(ReportReason.Failed)
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -125,6 +168,7 @@ fun ReportOverlay() {
                 // launch can offer it again; only the in-memory failure is dropped, and
                 // Trouble will not re-raise the same one for an hour.
                 pending = null
+                drop()
                 if (why == ReportReason.Failed) Trouble.clear()
                 detector.forget()
             },
@@ -139,25 +183,42 @@ fun ReportOverlay() {
             onDismiss = {
                 sheetOpen = false
                 pending = null
+                drop()
                 Trouble.clear()
                 if (why == ReportReason.Crashed) CrashLog.clear(context)
             },
             onSend = { symptom, note ->
-                val report = Reports.compose(
-                    context = context,
-                    symptom = symptom,
-                    note = note,
-                    screen = ReportContext.screen,
-                    crash = crash,
-                    failure = if (why == ReportReason.Failed) failure else null,
-                )
+                val picture = shot
+                shot = null
+                val why0 = if (why == ReportReason.Failed) failure else null
                 // Closed before the send, not after: submit() queues to disk first, so there is
                 // nothing here that can fail in a way the sheet would need to report.
                 sheetOpen = false
                 pending = null
                 Trouble.clear()
                 CrashLog.clear(context)
-                scope.launch { runCatching { Reports.submit(context, report) } }
+                scope.launch {
+                    runCatching {
+                        // PNG compression on the main thread is a visible hitch on the LPIII,
+                        // and this is the one moment the UI is animating a sheet away.
+                        val encoded = picture?.let {
+                            withContext(Dispatchers.Default) { Screenshot.encode(it) }
+                        }
+                        picture?.recycle()
+                        Reports.submit(
+                            context,
+                            Reports.compose(
+                                context = context,
+                                symptom = symptom,
+                                note = note,
+                                screen = ReportContext.screen,
+                                crash = crash,
+                                failure = why0,
+                                shot = encoded,
+                            ),
+                        )
+                    }
+                }
             },
         )
     }
