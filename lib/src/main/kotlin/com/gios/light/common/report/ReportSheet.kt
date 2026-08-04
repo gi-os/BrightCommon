@@ -1,6 +1,8 @@
 package com.gios.light.common.report
 
 import androidx.compose.foundation.BorderStroke
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -27,7 +31,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -64,13 +72,19 @@ fun ReportSheet(
     failure: String? = null,
     /** How the app calls itself in the sentence "X could not …". */
     appName: String = "This app",
+    /** The screen as it was when the offer went up, or null when there is no picture. */
+    shot: Bitmap? = null,
     onDismiss: () -> Unit,
-    onSend: (symptom: Symptom, note: String) -> Unit,
+    onSend: (symptom: Symptom, note: String, attachShot: Boolean) -> Unit,
 ) {
     var symptom by remember {
         mutableStateOf(if (reason == ReportReason.Crashed) Symptom.Crashed else Symptom.Other)
     }
     var note by remember { mutableStateOf("") }
+    // Attached by default: a picture answers most "looks wrong" reports on its own, and a
+    // default of off would mean the useful case needs a decision every single time. Shown
+    // rather than described, so leaving it out is a glance and one tap.
+    var attachShot by remember { mutableStateOf(true) }
     val scroll = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -132,6 +146,48 @@ fun ReportSheet(
                 modifier = Modifier.padding(top = 8.dp),
             )
 
+            // The picture, if there is one. Visible before sending rather than after, because
+            // this is the part of a report that can carry something you did not mean to send —
+            // a thread, a ticket, a photograph. Rendered desaturated, which is exactly what
+            // gets encoded, so what you see is what leaves the phone.
+            if (shot != null) {
+                SheetLabel("THE SCREEN", secondary, Modifier.padding(top = 22.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .width(56.dp)
+                            .height(84.dp)
+                            .border(BorderStroke(1.dp, secondary))
+                            .clickable(interactionSource = null, indication = null) {
+                                attachShot = !attachShot
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            bitmap = shot.asImageBitmap(),
+                            contentDescription = "The screen at the time of the report",
+                            contentScale = ContentScale.Crop,
+                            alpha = if (attachShot) 1f else 0.25f,
+                            colorFilter = ColorFilter.colorMatrix(
+                                ColorMatrix().apply { setToSaturation(0f) },
+                            ),
+                            modifier = Modifier.size(width = 54.dp, height = 82.dp),
+                        )
+                    }
+                    SheetChip(
+                        label = if (attachShot) "ATTACHED" else "LEFT OUT",
+                        selected = attachShot,
+                        content = content,
+                        secondary = secondary,
+                        modifier = Modifier.weight(1f),
+                    ) { attachShot = !attachShot }
+                }
+            }
+
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -152,7 +208,7 @@ fun ReportSheet(
                     content = content,
                     secondary = secondary,
                     modifier = Modifier.weight(1f),
-                ) { onSend(symptom, note) }
+                ) { onSend(symptom, note, attachShot && shot != null) }
             }
 
             Text(

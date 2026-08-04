@@ -88,6 +88,9 @@ anything — and the picture rides in the issue body as base64. No permission is
 the app looking at itself, not screen capture. A crash offer has no picture, because the screen
 after a relaunch is not the screen that died.
 
+The sheet shows the picture as a thumbnail with an ATTACHED / LEFT OUT chip, so a report that would
+have carried something private is one tap from not carrying it.
+
 **3b. The sensor readout, if you want it.**
 
 ```kotlin

@@ -180,6 +180,7 @@ fun ReportOverlay() {
             reason = why,
             failure = if (why == ReportReason.Failed) failure?.what else null,
             appName = LightReport.appName,
+            shot = shot,
             onDismiss = {
                 sheetOpen = false
                 pending = null
@@ -187,8 +188,9 @@ fun ReportOverlay() {
                 Trouble.clear()
                 if (why == ReportReason.Crashed) CrashLog.clear(context)
             },
-            onSend = { symptom, note ->
-                val picture = shot
+            onSend = { symptom, note, attachShot ->
+                val picture = shot?.takeIf { attachShot }
+                shot?.takeIf { !attachShot }?.recycle()
                 shot = null
                 val why0 = if (why == ReportReason.Failed) failure else null
                 // Closed before the send, not after: submit() queues to disk first, so there is

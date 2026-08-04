@@ -23,6 +23,17 @@ moment the UI is animating a sheet away.
 Dropping an offer recycles its bitmap. Holding one for a report nobody sent is exactly the kind of
 leak that goes unnoticed on a phone with 4GB.
 
+### You see it before it goes
+
+The sheet shows the picture rather than describing it: a thumbnail, desaturated exactly the way the
+encoder will desaturate it, next to an ATTACHED / LEFT OUT chip. Tapping either drops it.
+
+Attached by default, because a picture answers most "looks wrong" reports on its own and a default
+of off would make the useful case cost a decision every time. But a screenshot is the one part of a
+report that can carry something you did not mean to send — a thread, a ticket, a face — and
+`PixelCopy` needs no permission, so nothing else in the flow would ever mention it. Left out, the
+bitmap is recycled and never encoded.
+
 ### ShakeMonitor
 
 The numbers behind the gesture — current g, held peak, turns counted, turns needed, shakes fired —
