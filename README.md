@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.1.0")
+implementation("com.gios:light-common:1.2.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous
@@ -109,6 +109,79 @@ read a moving highlight. For a control that really does want one step per notch,
 A Compose `Dialog` — and a `ModalBottomSheet`, which is one underneath — is a window of its own.
 Keys go to whichever window has focus, so while a sheet is up the activity never sees them and
 the wheel goes dead. `WheelInDialog()` inside the sheet fixes that.
+
+---
+
+## Backing up, via LightSync
+
+`LightSyncBackup` is the whole of an app's contribution to LightSync. It used to be a file each
+app kept its own copy of; it is a class here now, and the archive layout is unchanged, so blobs
+already on BasilNet restore into a migrated app.
+
+```kotlin
+class Backup : LightSyncBackup() {
+    override fun stores() = listOf(
+        FileStore("main", Contents(prefs = listOf("lighttip"))),
+    )
+}
+```
+
+```xml
+<provider
+    android:name=".backup.Backup"
+    android:authorities="${applicationId}.lightsync.backup"
+    android:exported="true" />
+```
+
+The authority suffix `.lightsync.backup` *is* the registration — the agent finds apps by asking
+the package manager, so adding the seventeenth app never touches LightSync.
+
+**Two kinds of store, and the choice is not stylistic.**
+
+- `FileStore` — the files on disk are the backup. Another install of the same app on another
+  phone can open them. Almost everything is this.
+- `LogicalStore` — they are not, so the store produces something portable. Anything sealed with
+  an AndroidKeyStore key **must** be this: that key cannot leave the device and will not survive
+  a factory reset, so copying the ciphertext yields a backup that restores cleanly and decrypts
+  to nothing.
+
+An app with several subsystems lists several stores. Under one flat file list it had to pick the
+worst answer for all of them.
+
+`name` is an identifier, not a display string — it is written into the archive and read back on
+restore, so renaming one orphans every blob already stored.
+
+Overriding `contents()` alone still works and is treated as a single `FileStore("main")`.
+
+---
+
+## R8, minification and the baseline profile
+
+`consumer-rules.pro` covers everything in here, so a consumer can go straight to:
+
+```properties
+# gradle.properties
+android.enableR8.fullMode=true
+```
+
+```kotlin
+// app/build.gradle.kts
+buildTypes {
+    release {
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+}
+```
+
+What an app still owes its own rules for is anything *it* reaches by name: ML Kit's model
+loading (Camera, OCR), any Room entity read reflectively, and any class parsed out of JSON by
+field name. Full mode's rule of thumb is that a `-keep` on a class no longer keeps its members,
+so a rule that worked before may now need `{ *; }` or an explicit `<init>()`.
+
+The AAR carries a baseline profile for the wheel, the crash handler and the type lookup, merged
+into the app's own at build time. Nothing to wire up.
 
 ---
 

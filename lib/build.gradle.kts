@@ -7,7 +7,7 @@ plugins {
 
 // Bumped by hand, one minor step per change, the same rule the apps follow. The publish
 // workflow reads this to tag the release, so it is the single source of truth for the version.
-val libraryVersion = "1.1.0"
+val libraryVersion = "1.2.0"
 
 android {
     namespace = "com.gios.light.common"
@@ -18,6 +18,10 @@ android {
         // most of the others are minSdk 29, so anything higher here would refuse to link.
         minSdk = 29
         consumerProguardFiles("consumer-rules.pro")
+        // Exposed as LightCommon.VERSION. Generated rather than written down a second time:
+        // a hand-copied constant still compiles when it goes stale, and the value's only job
+        // is to be true on a diagnostic screen.
+        buildConfigField("String", "LIGHT_COMMON_VERSION", "\"$libraryVersion\"")
     }
 
     compileOptions {
@@ -25,7 +29,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     publishing {
         singleVariant("release") {

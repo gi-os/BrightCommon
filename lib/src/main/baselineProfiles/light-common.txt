@@ -1,0 +1,21 @@
+# Baseline profile for the shared code, merged into every consumer's profile at build time.
+#
+# Only the paths that run before the first frame or on the first input. The wheel is here
+# because the very first notch after a cold start is the one that feels slow — by the second
+# the interpreter has warmed up and nobody notices. The report code is here because it installs
+# a crash handler in onCreate, on the critical path, in every app.
+HSPLcom/gios/light/common/LightCommon;->getVERSION()Ljava/lang/String;
+HSPLcom/gios/light/common/hw/LightKeys;->of(Landroid/view/KeyEvent;)Lcom/gios/light/common/hw/LightKey;
+HSPLcom/gios/light/common/hw/LightKeys;->wheelLabelsPresent()Z
+HSPLcom/gios/light/common/hw/LightKeys;-><clinit>()V
+HSPLcom/gios/light/common/hw/LightKeys;-><init>()V
+Lcom/gios/light/common/hw/LightKey;
+HSPLcom/gios/light/common/hw/WheelKt;->**(**)**
+HSPLcom/gios/light/common/hw/WheelBus;->**(**)**
+HSPLcom/gios/light/common/report/LightReport;->install(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+HSPLcom/gios/light/common/report/CrashLog;->**(**)**
+HSPLcom/gios/light/common/report/ShakeDetector;->**(**)**
+HSPLcom/gios/light/common/report/ShakeGesture;->**(**)**
+HSPLcom/gios/light/common/report/ReportHost;->**(**)**
+HSPLcom/gios/light/common/theme/LightFontKt;->**(**)**
+Lcom/gios/light/common/theme/LightGreysKt;
