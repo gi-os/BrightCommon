@@ -84,6 +84,15 @@ jobs:
           REPO: ${{ matrix.repo }}
         run: |
           set -euo pipefail
+          # An unset secret arrives as an empty string, and the failure it produces three lines
+          # down is `curl: URL rejected: Malformed input to a URL function` — which reads like a
+          # bug in this script rather than a missing credential. Say what it actually is.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::CONSUMER_BUMP_TOKEN is not set on this repository. It must be a PAT"
+            echo "::error::with contents and pull-requests write on the consumer repos;"
+            echo "::error::GITHUB_TOKEN will not do, its write access stops at light-common."
+            exit 1
+          fi
           # Clone in /tmp — never into a synced folder, and never reuse a checkout.
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/gi-os/${REPO}.git" /tmp/c
           cd /tmp/c

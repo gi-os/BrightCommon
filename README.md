@@ -202,6 +202,13 @@ library bump is exactly the change that should compile first.
 
 That workflow needs `CONSUMER_BUMP_TOKEN`: a PAT with contents and pull-requests write on the
 consumer repos. `GITHUB_TOKEN` will not do, as its write access stops at this repository.
+**It is not set yet**, so every release so far has been propagated by hand. Until it is, treat
+the bump as a manual step.
+
+It also used to be triggered by `release: published`, and in that form it had never run once —
+GitHub does not start a workflow from an event raised by `GITHUB_TOKEN`, and the publish job
+creates the release. That failure is invisible: no run, no log, no red mark. It hangs off
+`workflow_run` on Publish now, which is exempt.
 
 ---
 
