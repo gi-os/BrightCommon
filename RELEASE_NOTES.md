@@ -1,16 +1,22 @@
-## light-common 1.2.1 — the baseline profile is actually in the AAR this time
+## light-common 1.2.2 — the propagation workflow, which had never once run
 
-A packaging fix, and nothing else. 1.2.0 announced a baseline profile and shipped an AAR without
-one: `unzip -l` on the published artifact lists `R.txt`, `AndroidManifest.xml`, `classes.jar`,
-`proguard.txt` and the metadata, and no profile.
+No library code changed. This releases a fix to `bump-consumers.yml`, and the release exists
+mostly so the fixed workflow gets to prove itself.
 
-The file was at `src/main/baselineProfiles/light-common.txt`. That directory is for app modules
-and for profiles produced by the baseline profile plugin; a library ships one as
-`src/main/baseline-prof.txt`, which is where it is now. AGP does not warn about a profile in the
-wrong place — it simply packages nothing, so every consumer that added `profileinstaller` in
-good faith had nothing to install.
+`bump-consumers` is what makes a release here reach anybody: every consumer pins a version, so
+without it a fix is just an artifact nobody fetches. It was triggered by `release: published`,
+and it had never fired — not once, across every release. GitHub will not start a workflow from an
+event raised by `GITHUB_TOKEN`, and the release is created by the publish job's own token. There
+is no failed run to notice in that situation. There is nothing at all, which is why 1.2.0 and
+1.2.1 both went out to silence and the consumers were bumped by hand.
 
-Worth stating as a rule: check the artifact, not the source tree. The failure mode for a build
-input that is picked up by convention is silence.
+Now it hangs off `workflow_run` on Publish, which is exempt from that rule, and it is gated on
+the publish having concluded successfully so a failed publish bumps nobody.
 
-No code change. Consumers on 1.2.0 get this by bumping the version and nothing else.
+Two things fell out of fixing it:
+
+- The version is read from the triggering run's `head_branch`, not from `GITHUB_REF_NAME`. Under
+  `workflow_run` this job checks out the default branch, so the old expression would have
+  resolved to `main` and opened a batch of pull requests pinning `com.gios:light-common:main`.
+  There is now a shape check that fails loudly rather than doing that.
+- `LightSync` is in the consumer matrix. It became one in its v1.2 and was missing from the list.
