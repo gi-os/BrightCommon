@@ -1,5 +1,12 @@
 # Baseline profile for the shared code, merged into every consumer's profile at build time.
 #
+# The filename and location are load-bearing. A library module ships a profile as
+# `src/main/baseline-prof.txt` and nothing else — `src/main/baselineProfiles/` is the app-module
+# and generated-profile directory, and AGP does not read it here. 1.2.0 put the file there, so
+# the AAR went out with no profile in it at all and every consumer's profileinstaller had
+# nothing to install. Verify after publishing with `unzip -l` on the AAR: the entry is called
+# `baseline-prof.txt` and its absence is silent.
+#
 # Only the paths that run before the first frame or on the first input. The wheel is here
 # because the very first notch after a cold start is the one that feels slow — by the second
 # the interpreter has warmed up and nobody notices. The report code is here because it installs
