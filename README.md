@@ -112,9 +112,9 @@ the wheel goes dead. `WheelInDialog()` inside the sheet fixes that.
 
 ---
 
-## Backing up, via LightSync
+## Backing up, via BrightSync
 
-`LightSyncBackup` is the whole of an app's contribution to LightSync. It used to be a file each
+`BrightSyncBackup` is the whole of an app's contribution to BrightSync. It used to be a file each
 app kept its own copy of; it is a class here now, and the archive layout is unchanged, so blobs
 already on BasilNet restore into a migrated app.
 
@@ -134,7 +134,7 @@ class Backup : LightSyncBackup() {
 ```
 
 The authority suffix `.lightsync.backup` *is* the registration — the agent finds apps by asking
-the package manager, so adding the seventeenth app never touches LightSync.
+the package manager, so adding the seventeenth app never touches BrightSync.
 
 **Two kinds of store, and the choice is not stylistic.**
 
