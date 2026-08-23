@@ -82,7 +82,13 @@ afterEvaluate {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/gi-os/light-common")
+                // gi-os/BrightCommon, not gi-os/light-common. The repo was renamed and GitHub
+                // Packages does not follow a rename on the way *in*: reads redirect fine, so
+                // every consumer kept resolving and nothing looked wrong, but the PUT 404s. That
+                // is what happened to 1.2.3's first attempt. The artifact coordinates stay
+                // `com.gios:light-common` on purpose -- renaming those would break every
+                // consumer's dependency line to fix a URL only this file uses.
+                url = uri("https://maven.pkg.github.com/gi-os/BrightCommon")
                 credentials {
                     username = System.getenv("GITHUB_ACTOR")
                         ?: providers.gradleProperty("gpr.user").orNull

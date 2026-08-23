@@ -21,6 +21,13 @@ predicate, exact for the sensor and prefix for the board. That is now here, alon
 `fromScanCode(scanCode, deviceName)` so the gating can be tested on the JVM -- `of()` needs a real
 `KeyEvent`, which needs a real device, which needs a phone.
 
+
+Publishing was broken for this release and had to be fixed to ship it. The repo is
+`gi-os/BrightCommon` now, and GitHub Packages does not follow a rename on the way *in*: reads
+still redirect, so every consumer kept resolving and nothing looked wrong, while the publish
+`PUT` returned 404. The artifact coordinates stay `com.gios:light-common` -- renaming those
+would break every consumer's dependency line to fix a URL only `lib/build.gradle.kts` uses.
+
 No API removed. Consumers get the fix by bumping.
 
 ## light-common 1.2.2 — the propagation workflow, which had never once run
