@@ -83,6 +83,37 @@ setContent {
 
 It draws in its own window, so it does not care what layout it is called from.
 
+**3b. Call `Trouble.record` when something the user asked for did not happen.**
+
+```kotlin
+is Handoff.Outcome.Failed -> {
+    if (outcome.fault) Trouble.record("Sending photographs failed", outcome.why)
+    onNotice(outcome.why)   // still tell them, immediately
+}
+```
+
+This is the convention, and it is the half that gets forgotten. Installing the reporter arms
+crashes and the shake gesture; neither of those covers the ordinary case where an action simply
+did not work and the app said so in a line of small text and moved on. Every app here has some
+transient notice widget, and every one of them uses it for `Copied` and `Timer 3s` as well — so
+a send that actually broke ends up looking exactly like a send that worked. `Trouble.record` is
+what raises the SEND ERROR? chip, which is the only thing that offers to file the report while
+the screenshot is still worth having.
+
+Two rules, both learned the hard way:
+
+- **Only record what is your fault.** An action refused because nothing was selected, or because
+  the app it needs is not installed, is the app working. A chip that appeared every time someone
+  tapped send on an empty selection would be a chip nobody reads. Where an outcome type covers
+  both, carry the distinction on it rather than deciding at the call site.
+- **Record *and* notify, not one or the other.** The chip is an offer to file something later;
+  the notice is the answer to what just happened. Dropping the notice in favour of the chip makes
+  the app feel like it ignored the tap.
+
+`Trouble.record(what, throwable)` is the same call with the exception's class and message filled
+in. Both are `@Synchronized`, cheap, and rate-limited per `what` to once an hour, so calling one
+from inside a catch block that is already handling something worse is safe.
+
 **4. The wheel, if you use it.**
 
 ```kotlin

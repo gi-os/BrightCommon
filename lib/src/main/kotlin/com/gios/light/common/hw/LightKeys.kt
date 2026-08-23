@@ -60,15 +60,34 @@ object LightKeys {
     private const val SCAN_FOCUS = 80 // KEY_KP2
     private const val SCAN_CAMERA = 27 // KEY_RIGHTBRACE
 
-    /** The only two devices these scancodes may be trusted from. */
-    private val trustedDevices = setOf("Pixart pat9126ja", "gpio-keys")
+    /**
+     * Which physical device is allowed to claim which scancode.
+     *
+     * Per scancode rather than one shared set of trusted device names, and that is not
+     * fussiness. The turns come from the optical sensor and everything else from the board's
+     * button device, so a shared set lets either device claim any of the five codes — and these
+     * are ordinary keyboard codes underneath: 19 is `r`, 20 is `t`, 66 is F8. One shared set
+     * means a paired Bluetooth keyboard whose name happened to match could rack the zoom.
+     *
+     * The board's name is matched by **prefix**, which is the half that actually bites. That
+     * name is the kernel's, and vendors spell it `gpio-keys`, `gpio_keys` or `gpio-keys-wheel`
+     * depending on the devicetree. An exact match against `"gpio-keys"` fails on a build that
+     * spells it either of the other ways, and the failure is total and silent: the wheel click
+     * simply never arrives, which reads as an app ignoring the button rather than as a device
+     * name not matching a string. Ported from BrightRecorder, which had it right.
+     */
+    private data class Control(val key: LightKey, val fromDevice: (String) -> Boolean)
+
+    private val PIXART: (String) -> Boolean = { it == "Pixart pat9126ja" }
+
+    private val GPIO: (String) -> Boolean = { it.startsWith("gpio", ignoreCase = true) }
 
     private val byScanCode = mapOf(
-        SCAN_WHEEL_UP to LightKey.WheelUp,
-        SCAN_WHEEL_DOWN to LightKey.WheelDown,
-        SCAN_WHEEL_CLICK to LightKey.WheelClick,
-        SCAN_FOCUS to LightKey.Focus,
-        SCAN_CAMERA to LightKey.Camera,
+        SCAN_WHEEL_UP to Control(LightKey.WheelUp, PIXART),
+        SCAN_WHEEL_DOWN to Control(LightKey.WheelDown, PIXART),
+        SCAN_WHEEL_CLICK to Control(LightKey.WheelClick, GPIO),
+        SCAN_FOCUS to Control(LightKey.Focus, GPIO),
+        SCAN_CAMERA to Control(LightKey.Camera, GPIO),
     )
 
     private val byKeyCode: Map<Int, LightKey> = buildMap {
@@ -92,8 +111,19 @@ object LightKeys {
         // but only from the two devices that physically own these controls — otherwise a
         // paired keyboard's `r` would rack the zoom.
         val device = event.device?.name ?: return null
-        if (device in trustedDevices) return byScanCode[event.scanCode]
-        return null
+        val control = byScanCode[event.scanCode] ?: return null
+        return if (control.fromDevice(device)) control.key else null
+    }
+
+    /**
+     * Which control a scancode from a named device resolves to, label table aside.
+     *
+     * Exposed only so the device gating can be tested on the JVM: [of] needs a real [KeyEvent],
+     * which needs a device, which needs a phone.
+     */
+    fun fromScanCode(scanCode: Int, deviceName: String): LightKey? {
+        val control = byScanCode[scanCode] ?: return null
+        return if (control.fromDevice(deviceName)) control.key else null
     }
 
     /** True if this build maps the wheel labels at all — useful for a settings readout. */

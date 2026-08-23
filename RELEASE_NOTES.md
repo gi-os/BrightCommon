@@ -1,3 +1,28 @@
+## light-common 1.2.3 — the wheel click, on a phone that spells its button device differently
+
+`LightKeys` has two ways in: resolve Light's keylayout label to a keycode, or fall back to the
+raw Linux scancode. The fallback has to be gated on which device sent the code, because these are
+ordinary keyboard codes underneath -- 19 is `r`, 20 is `t`, 66 is F8 -- and an ungated fallback
+turns a paired Bluetooth keyboard into the wheel.
+
+The gate was one shared set of exact device names, `{"Pixart pat9126ja", "gpio-keys"}`, and it was
+wrong twice over:
+
+- **`gpio-keys` is not the only spelling.** The name is the kernel's, and the devicetree decides
+  whether it reads `gpio-keys`, `gpio_keys` or `gpio-keys-wheel`. On a build that chose either of
+  the other two, an exact match fails and the wheel click never arrives at all. Nothing logs
+  anything; the button just does nothing, which looks like an app ignoring it.
+- **One set for five codes lets either device claim any of them.** The turns come from the optical
+  sensor and the click and camera stages from the board's button device, and nothing was stopping
+  the sensor answering for scancode 66.
+
+BrightRecorder has carried the right shape in its own copy since it was written: a per-scancode
+predicate, exact for the sensor and prefix for the board. That is now here, along with
+`fromScanCode(scanCode, deviceName)` so the gating can be tested on the JVM -- `of()` needs a real
+`KeyEvent`, which needs a real device, which needs a phone.
+
+No API removed. Consumers get the fix by bumping.
+
 ## light-common 1.2.2 — the propagation workflow, which had never once run
 
 No library code changed. This releases a fix to `bump-consumers.yml`, and the release exists
