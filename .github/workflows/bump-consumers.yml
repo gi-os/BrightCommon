@@ -101,7 +101,10 @@ jobs:
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/gi-os/${REPO}.git" /tmp/c
           cd /tmp/c
 
-          CURRENT=$(grep -rhoE 'com\.gios:light-common:[0-9]+\.[0-9]+\.[0-9]+' . --include=*.kts --include=*.toml | head -1 | sed 's/.*://')
+          # `|| true`, because a consumer that has not adopted the library yet is the normal
+          # case, not an error: grep exits 1 on no match and `set -o pipefail` turns that into
+          # a failed job three lines before the check that was written to handle it.
+          CURRENT=$({ grep -rhoE 'com\.gios:light-common:[0-9]+\.[0-9]+\.[0-9]+' . --include=*.kts --include=*.toml || true; } | head -1 | sed 's/.*://')
           if [ -z "$CURRENT" ]; then
             echo "::notice::${REPO} does not depend on light-common yet — nothing to bump"
             exit 0
