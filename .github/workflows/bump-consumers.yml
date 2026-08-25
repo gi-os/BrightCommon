@@ -44,21 +44,25 @@ jobs:
       # One failure should not hide the other twelve.
       fail-fast: false
       matrix:
+        # Current repository names. The Light* names they were written with still redirect,
+        # but LightNews is the exception that makes redirects unsafe here: it is a live repo
+        # of its own — the old newsletter app, absorbed into BrightNews — so a bump aimed at
+        # it landed nowhere near the consumer it meant.
         repo:
-          - LightSports
-          - LightChat
-          - LightRemote
-          - LightNews
+          - BrightSports
+          - BrightChat
+          - BrightRemote
+          - BrightNews
           - LightVoice
-          - LightControl
-          - LightNoise
-          - LightFastread
-          - LightPass
-          - LightTip
-          - LightCamera
-          - LightNotebook
-          - LightPhono
-          - LightSync
+          - BrightControl
+          - BrightNoise
+          - BrightLibrary
+          - BrightPasses
+          - BrightTip
+          - Roll
+          - BrightNotebook
+          - BrightMusic
+          - BrightSync
     steps:
       - name: Work out the version
         id: v
