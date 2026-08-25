@@ -115,6 +115,13 @@ jobs:
           fi
 
           BRANCH="chore/light-common-$V"
+          # A second publish while the first bump is still open must not report as a break.
+          # The branch already exists, its content is identical, and `gh pr create` refuses a
+          # duplicate — so check for the pull request and leave it alone.
+          if gh pr view "$BRANCH" --repo "gi-os/${REPO}" >/dev/null 2>&1; then
+            echo "::notice::${REPO} already has an open bump to $V"
+            exit 0
+          fi
           git checkout -q -b "$BRANCH"
           grep -rlE "com\.gios:light-common:${CURRENT}" . --include=*.kts --include=*.toml \
             | xargs sed -i "s/com\.gios:light-common:${CURRENT}/com.gios:light-common:${V}/g"
