@@ -294,7 +294,13 @@ object Reports {
         if (!canSend()) return@withContext
         for (f in queued(context)) {
             val text = runCatching { f.readText() }.getOrNull() ?: continue
-            val json = runCatching { JSONObject(text) }.getOrNull() ?: run { f.delete(); return@withContext }
+            val json = runCatching { JSONObject(text) }.getOrNull()
+            // A file that is not JSON can never be posted, so it goes — but the ones behind it
+            // are fine, and returning here left them stuck behind one bad byte.
+            if (json == null) {
+                f.delete()
+                continue
+            }
             if (post(json)) f.delete() else return@withContext
         }
     }
@@ -343,10 +349,13 @@ object Reports {
             }
             conn!!.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
             val code = conn!!.responseCode
-            // 4xx that is not rate limiting will never succeed — a bad token, a deleted repo,
-            // a label that no longer exists. Dropping it is better than retrying it forever on
-            // every launch.
-            code in 200..299 || (code in 400..499 && code != 403 && code != 429)
+            // Only the payload's own fault counts as undeliverable. This used to drop every 4xx
+            // that was not 403 or 429, which quietly threw the whole queue away on the two
+            // failures this fleet has actually had: an expired REPORT_TOKEN (401) and a tracker
+            // repo that had been renamed (404). Both are conditions a later build fixes, and a
+            // report deleted because the token expired is a report nobody ever sees. A malformed
+            // body or one over the size cap will never post, whatever build tries it.
+            code in 200..299 || code == 400 || code == 413 || code == 422
         }.getOrDefault(false).also { runCatching { conn?.disconnect() } }
     }
 

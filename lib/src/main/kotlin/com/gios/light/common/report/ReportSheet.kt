@@ -74,6 +74,15 @@ fun ReportSheet(
     failure: String? = null,
     /** How the app calls itself in the sentence "X could not …". */
     appName: String = "This app",
+    /**
+     * What the note starts as.
+     *
+     * Used for a failure the app caught: the note becomes the issue *title*, so an empty one
+     * means every self-reported issue arrives called "Something else" and triage reads a wall of
+     * identical headlines. The app already knows what failed; making somebody retype it on this
+     * keypad is a tax for no information.
+     */
+    seedNote: String = "",
     /** The number given last time, so a second report does not retype it. See [Contact]. */
     knownPhone: String = "",
     /**
@@ -92,7 +101,7 @@ fun ReportSheet(
         mutableStateOf(if (reason == ReportReason.Crashed) Symptom.Crashed else Symptom.Other)
     }
     var wish by remember { mutableStateOf(Wish.New) }
-    var note by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf(seedNote) }
     var phone by remember { mutableStateOf(knownPhone) }
     var withShot by remember { mutableStateOf(hasScreenshot) }
     val scroll = rememberScrollState()

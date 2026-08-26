@@ -84,6 +84,62 @@ class ShakeGestureTest {
         assertEquals("one continuous rattle is one report", 1, fired)
     }
 
+    /**
+     * The three boundary cases the apps' own copies of this test covered and this one did not.
+     * They came back when BrightMusic, Roll and BrightNotebook deleted their vendored suites:
+     * the numbers below are the whole feature — under them nothing happens and the phone looks
+     * broken, over them a pocket files issues — and none of them can be checked on a device.
+     */
+    @Test
+    fun `one turn short of the count does not fire`() {
+        val g = ShakeGesture()
+        var fired = false
+        var at = 1_000L
+        // Three alternations where four are needed. Deliberately not "almost": this is the case
+        // that shipped once and read to Gio as "I shake it and nothing happens".
+        repeat(3) { i ->
+            if (g.throwOnce(at, if (i % 2 == 0) 1 else -1)) fired = true
+            at += 60
+        }
+        assertFalse("three turns is not the gesture", fired)
+        assertTrue("but they were counted", g.turns > 0)
+    }
+
+    @Test
+    fun `just under the threshold is not a turn`() {
+        val g = ShakeGesture()
+        var fired = false
+        var at = 1_000L
+        // 0.45g against a 0.46g threshold, rattled for far longer than a real shake lasts.
+        repeat(12) { i ->
+            if (g.throwOnce(at, if (i % 2 == 0) 1 else -1, magnitude = 0.45f)) fired = true
+            at += 60
+        }
+        assertFalse("a whole rattle below the threshold counts nothing", fired)
+        assertEquals(0, g.turns)
+    }
+
+    @Test
+    fun `a second shake after the cooldown fires again`() {
+        val g = ShakeGesture()
+        var at = 1_000L
+        var first = false
+        repeat(6) { i ->
+            if (g.throwOnce(at, if (i % 2 == 0) 1 else -1)) first = true
+            at += 60
+        }
+        assertTrue("the first rattle fires", first)
+        // Past the 3s cooldown. Someone who shakes, ignores the chip, and shakes again a few
+        // seconds later means it — and used to get nothing.
+        at += 4_000
+        var second = false
+        repeat(6) { i ->
+            if (g.throwOnce(at, if (i % 2 == 0) 1 else -1)) second = true
+            at += 60
+        }
+        assertTrue("and so does the next one", second)
+    }
+
     @Test
     fun `reset abandons a half finished gesture`() {
         val g = ShakeGesture()

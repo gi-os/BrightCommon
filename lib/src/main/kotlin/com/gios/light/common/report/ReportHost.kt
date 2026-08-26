@@ -104,9 +104,10 @@ fun ReportOverlay(
     val failure by Trouble.latest.collectAsState()
     val asked by Feedback.asked.collectAsState()
 
-    // Read once. The file is deleted as soon as it has been offered, so that a crash is asked
-    // about on the next launch and not on every launch after it.
-    val crash = remember { CrashLog.read(context) }
+    // Read once per process, not once per composition: an activity recreated by a theme change
+    // or by "don't keep activities" is not a new launch, and offering the same crash again on
+    // each of those is how the offer becomes noise. See CrashLog.readOnce.
+    val crash = remember { CrashLog.readOnce(context) }
 
     val detector = remember {
         ShakeDetector(context) {
@@ -186,6 +187,13 @@ fun ReportOverlay(
             reason = why,
             failure = if (why == ReportReason.Failed) failure?.what else null,
             appName = LightReport.appName,
+            // The note becomes the issue title, so a self-reported failure that arrives with an
+            // empty one is filed as "Something else". The app knows what it could not do.
+            seedNote = if (why == ReportReason.Failed) {
+                failure?.what?.let { "Could not $it" }.orEmpty()
+            } else {
+                ""
+            },
             // Read once per open rather than held in state up here: the sheet owns the field,
             // and this is only the value it starts with.
             knownPhone = remember { Contact.phone(context) },
@@ -202,6 +210,13 @@ fun ReportOverlay(
                 // lambda returns, and by then `shot` and `failure` are null.
                 val picture = shot?.takeIf { draft.includeShot }
                 val cause = if (why == ReportReason.Failed) failure else null
+                // The trace goes with a crash prompt, and with a shake that says the app closed
+                // itself — the two cases where it is the answer. Attaching it to a report about a
+                // slow list means a week-old stack trace as evidence, and worse, the `crash`
+                // label outranks the symptom, so that report is filed as a crash it is not.
+                val trace = crash?.takeIf {
+                    why == ReportReason.Crashed || draft.symptom == Symptom.Crashed
+                }
                 // Kept for next time, on send and not on every keystroke. A half-typed number
                 // is not worth remembering, and the second report is the one that gets
                 // abandoned at a field you have already filled in once.
@@ -212,7 +227,9 @@ fun ReportOverlay(
                 pending = null
                 shot = null
                 Trouble.clear()
-                CrashLog.clear(context)
+                // Cleared only when this report carried it. A trace left on disk because the
+                // report was about something else is still unsent, and the next launch offers it.
+                if (trace != null) CrashLog.clear(context)
                 scope.launch {
                     runCatching {
                         // Off the main thread, all of it. Encoding the picture is a PNG compress
@@ -227,7 +244,7 @@ fun ReportOverlay(
                                 screen = ReportContext.screen,
                                 // An idea is not about a crash even when there was one.
                                 // compose() drops it on that branch.
-                                crash = crash,
+                                crash = trace,
                                 failure = cause,
                                 shot = picture?.let { Screenshot.encode(it) },
                             )

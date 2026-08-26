@@ -1,3 +1,37 @@
+## light-common 1.5.0 — four things the vendored copies did that this one did not
+
+Migrating BrightMusic, Roll and BrightNotebook off their own `report/` meant reading their copies
+line by line against this one, and they were not identical. Four differences were real, and all
+four are fixed here rather than in the apps.
+
+**A 401 or a 404 no longer deletes the queue.** `post` treated every 4xx that was not 403 or 429 as
+"this can never succeed, drop it". The two failures this fleet has actually had are an expired
+`REPORT_TOKEN` (401) and a tracker repo that had been renamed (404) — both conditions a later build
+fixes, and both were quietly throwing away every report on disk. Only 400, 413 and 422 are the
+payload's own fault now; everything else waits. A corrupt queue file also no longer blocks the
+reports behind it.
+
+**`seedNote` is back.** All three apps pre-filled the note with "Could not …" for a failure the app
+caught itself, and the note becomes the issue *title*. Without it every self-reported issue arrived
+called "Something else", which is a wall of identical headlines in the one place triage actually
+reads.
+
+**The stack trace only travels with a report that is about a crash.** `ReportHost` was passing it to
+every report filed on the launch after a crash — and `crash` outranks the symptom when the label is
+chosen, so a report about a slow list was being filed as a crash, with a trace about something else
+attached. It now goes with a crash prompt or with a shake that says the app closed itself, which is
+what the apps did. The log is also only cleared when the report carried it.
+
+**The crash offer appears once per launch, not once per activity.** The apps guarded on
+`savedInstanceState == null`; a library composable cannot see that. `CrashLog.readOnce` uses a
+process-scoped flag instead, which draws the same line — a recreation stays in the process, a launch
+does not. Roll and BrightNotebook both recreate the activity on their own colour-mode handling, and
+both were re-raising "IT CRASHED · SEND?" every time.
+
+Also: three gesture tests came back from the deleted suites — one turn short of the count, just
+under the threshold, and a second shake after the cooldown. Every one of them is a number that
+cannot be checked on a phone.
+
 ## light-common 1.4.1 — the send stays off the main thread
 
 A fix to 1.4.0, found reading it back rather than on a phone. `ReportOverlay` encoded the

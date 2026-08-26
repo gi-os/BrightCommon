@@ -39,6 +39,27 @@ object CrashLog {
     fun read(context: Context): String? =
         file(context).takeIf { it.exists() }?.runCatching { readText() }?.getOrNull()
 
+    /**
+     * The trace, but only the first time anything asks in this process.
+     *
+     * The offer has to appear once per *launch*, and an Activity is recreated for reasons that
+     * are not launches: a theme or font-scale change, a configuration change, "don't keep
+     * activities". The vendored copies this replaces guarded on `savedInstanceState == null`,
+     * which a library composable cannot see — but a recreation stays in the same process and a
+     * real launch does not, so a process-scoped flag draws the same line.
+     *
+     * Without it, the two apps that toggle the display's colour mode on their own lifecycle
+     * re-raise "IT CRASHED · SEND?" every time the activity comes back.
+     */
+    fun readOnce(context: Context): String? {
+        if (offered) return null
+        offered = true
+        return read(context)
+    }
+
+    @Volatile
+    private var offered = false
+
     fun clear(context: Context) {
         runCatching { file(context).delete() }
     }
