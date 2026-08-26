@@ -1,3 +1,16 @@
+## light-common 1.4.1 — the send stays off the main thread
+
+A fix to 1.4.0, found reading it back rather than on a phone. `ReportOverlay` encoded the
+screenshot inline in the send handler: a PNG compress of a full-screen bitmap plus a base64 pass,
+tens to hundreds of milliseconds on this hardware, on the frame that closes the sheet. The vendored
+copies this release replaces had always done that work on `Dispatchers.IO`, so shipping it inline
+would have turned a lossless migration into a visible hitch on SEND — in a camera app, on a phone
+with no spare frames.
+
+Composing and encoding now happen inside the coroutine, and the picture and the failure are
+snapshotted before the sheet state is cleared, because the lambda returns before the coroutine
+runs.
+
 ## light-common 1.4.0 — the screenshot, and the last three apps
 
 No new feature on the phone. This is the release that lets BrightMusic, Roll and BrightNotebook

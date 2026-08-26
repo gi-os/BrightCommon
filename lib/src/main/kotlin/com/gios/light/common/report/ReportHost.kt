@@ -19,7 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The whole reporting feature, as one line in `MainActivity`.
@@ -196,18 +198,10 @@ fun ReportOverlay(
                 if (why == ReportReason.Crashed) CrashLog.clear(context)
             },
             onSend = { draft ->
-                val report = Reports.compose(
-                    context = context,
-                    draft = draft,
-                    screen = ReportContext.screen,
-                    // An idea is not about a crash even when there was one. compose() drops it
-                    // on that branch; passing it anyway would only matter if that changed.
-                    crash = crash,
-                    failure = if (why == ReportReason.Failed) failure else null,
-                    // Encoded here rather than at capture: this is the one point where the
-                    // picture is known to be wanted. Null when it did not fit even at 200px.
-                    shot = shot?.takeIf { draft.includeShot }?.let { Screenshot.encode(it) },
-                )
+                // Snapshotted before the state below is cleared: the coroutine runs after this
+                // lambda returns, and by then `shot` and `failure` are null.
+                val picture = shot?.takeIf { draft.includeShot }
+                val cause = if (why == ReportReason.Failed) failure else null
                 // Kept for next time, on send and not on every keystroke. A half-typed number
                 // is not worth remembering, and the second report is the one that gets
                 // abandoned at a field you have already filled in once.
@@ -219,7 +213,28 @@ fun ReportOverlay(
                 shot = null
                 Trouble.clear()
                 CrashLog.clear(context)
-                scope.launch { runCatching { Reports.submit(context, report) } }
+                scope.launch {
+                    runCatching {
+                        // Off the main thread, all of it. Encoding the picture is a PNG compress
+                        // of a full-screen bitmap plus a base64 pass — tens to hundreds of
+                        // milliseconds on this hardware — and doing it inline would stall the
+                        // frame that closes the sheet. The vendored copies this replaces always
+                        // did it on IO; the library has to as well, or "SEND" hitches.
+                        val report = withContext(Dispatchers.IO) {
+                            Reports.compose(
+                                context = context,
+                                draft = draft,
+                                screen = ReportContext.screen,
+                                // An idea is not about a crash even when there was one.
+                                // compose() drops it on that branch.
+                                crash = crash,
+                                failure = cause,
+                                shot = picture?.let { Screenshot.encode(it) },
+                            )
+                        }
+                        Reports.submit(context, report)
+                    }
+                }
             },
         )
     }
