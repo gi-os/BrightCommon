@@ -27,6 +27,49 @@ enum class Symptom(val chip: String, val label: String, val slug: String) {
     Other("OTHER", "Something else", "other"),
 }
 
+/**
+ * Whether this is a complaint or a suggestion.
+ *
+ * Both arrive through the same gesture on purpose. The moment somebody notices the app is worth
+ * shaking at is the same moment they know what they wish it did instead, and making the idea take
+ * a different route — an email address, a repo nobody can see, a form on a phone with no browser —
+ * is how you guarantee it is never sent. The chip in the corner asks one question and the sheet
+ * splits it in two.
+ */
+enum class Kind(val chip: String, val slug: String) {
+    Bug("BUG", "bug"),
+    Idea("IDEA", "enhancement"),
+}
+
+/**
+ * What kind of idea, in the reporter's terms rather than a maintainer's.
+ *
+ * Four, so they tile two by two on a 3.92" panel, and worded as wants instead of as backlog
+ * categories — "Something is missing" is a sentence somebody types; "gap analysis" is not.
+ */
+enum class Wish(val chip: String, val label: String, val slug: String) {
+    New("NEW", "Something new I want", "idea-new"),
+    Change("CHANGE", "Change how something works", "idea-change"),
+    Missing("MISSING", "Something is missing", "idea-missing"),
+    Other("OTHER", "Something else", "idea-other"),
+}
+
+/**
+ * Everything the sheet collected, handed up in one piece.
+ *
+ * A parameter list would have grown a boolean and two enums this release, and half of any given
+ * call would have been defaults — a draft says plainly that a report is one object with an unused
+ * half depending on which way [kind] went.
+ */
+data class Draft(
+    val kind: Kind,
+    val symptom: Symptom,
+    val wish: Wish,
+    val note: String,
+    /** Optional. Empty means the reporter did not want to be called back, which is allowed. */
+    val phone: String,
+)
+
 /** A report on its way out: exactly the three fields the issues API wants. */
 data class Report(val title: String, val body: String, val labels: List<String>)
 
@@ -55,14 +98,84 @@ object Reports {
 
     fun pendingCount(context: Context): Int = queued(context).size
 
-    /** Turn what the sheet collected into an issue body. */
+    /**
+     * Turn what the sheet collected into an issue.
+     *
+     * The front door, and the only one [ReportHost] uses. A bug and an idea are two different
+     * documents rather than one document with empty sections: an idea has no stack trace, no free
+     * space and no heap figure, and a body that carries those anyway reads as a bug report that
+     * failed to collect them.
+     */
     fun compose(
+        context: Context,
+        draft: Draft,
+        screen: String,
+        crash: String?,
+        failure: Failure? = null,
+    ): Report = when (draft.kind) {
+        Kind.Bug -> composeBug(context, draft.symptom, draft.note, screen, crash, failure, draft.phone)
+        Kind.Idea -> composeIdea(context, draft.wish, draft.note, draft.phone, screen)
+    }
+
+    /**
+     * What somebody wishes the app did.
+     *
+     * Short on purpose. The build table stays — an idea that only makes sense on the current
+     * version is a common shape, and "already possible in v1.4" is an answer — but nothing here
+     * pretends to be diagnostics.
+     */
+    fun composeIdea(
+        context: Context,
+        wish: Wish,
+        note: String,
+        phone: String,
+        screen: String,
+    ): Report {
+        val version = versionName(context)
+        val trimmed = note.trim()
+        val headline = trimmed.takeIf { it.isNotEmpty() }?.let { first(it) } ?: wish.label
+        val body = buildString {
+            appendLine("### The idea")
+            appendLine()
+            appendLine(wish.label + (trimmed.takeIf { it.isNotEmpty() }?.let { " — $it" } ?: ""))
+            appendLine()
+            appendLine("### Where")
+            appendLine()
+            appendLine("Asked for from the `$screen` screen.")
+            appendLine()
+            appendLine("### Who is asking")
+            appendLine()
+            appendLine("| | |")
+            appendLine("|-|-|")
+            appendLine("| App | ${LightReport.appName} $version |")
+            appendLine("| Package | ${context.packageName} |")
+            appendLine("| Device | ${Build.MANUFACTURER} ${Build.MODEL} |")
+            appendLine("| Reporter | ${Device.reporter(context)} |")
+            appendLine("| Reach them | ${reach(phone)} |")
+            appendLine("| Reported | ${stamp()} |")
+        }
+        return Report(
+            title = "${LightReport.appName} $version — idea: $headline",
+            body = body,
+            labels = listOf(LightReport.label, Kind.Idea.slug, wish.slug, Device.label(context)),
+        )
+    }
+
+    /**
+     * A bug: what it was, where it was, and what the phone looked like at the time.
+     *
+     * The body this produces is the one the tracker has always had, with two rows added to the
+     * build table. `phone` is last and defaulted so the shape of every existing call site is
+     * unchanged apart from the name.
+     */
+    fun composeBug(
         context: Context,
         symptom: Symptom,
         note: String,
         screen: String,
         crash: String?,
         failure: Failure? = null,
+        phone: String = "",
     ): Report {
         val version = versionName(context)
         val trimmed = note.trim()
@@ -99,6 +212,8 @@ object Reports {
             appendLine("| Android | ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}) |")
             appendLine("| Device | ${Build.MANUFACTURER} ${Build.MODEL} |")
             appendLine("| Firmware | ${Build.DISPLAY} |")
+            appendLine("| Reporter | ${Device.reporter(context)} |")
+            appendLine("| Reach them | ${reach(phone)} |")
             appendLine("| Reported | ${stamp()} |")
             appendLine("| Free space | ${megabytes(context.filesDir.freeSpace)} |")
             appendLine("| Heap | ${megabytes(usedHeap())} of ${megabytes(Runtime.getRuntime().maxMemory())} |")
@@ -121,6 +236,9 @@ object Reports {
             // Worth separating: the app noticed this one on its own, so it is reproducible
             // from the detail rather than from somebody remembering what they were doing.
             if (failure != null) add("self-reported")
+            // Which half of the tracker this belongs in. Gio's own reports are reproducible on
+            // the bench; a stranger's is the only account of the bug there will ever be.
+            add(Device.label(context))
         }
         return Report(
             title = "${LightReport.appName} $version — $headline",
@@ -212,6 +330,16 @@ object Reports {
         @Suppress("DEPRECATION")
         context.packageManager.getPackageInfo(context.packageName, 0).versionName
     }.getOrNull()?.let { "v$it" } ?: "v?"
+
+    /**
+     * How to get back to the reporter, or a plain statement that there is no way to.
+     *
+     * "Not given" is written out rather than left blank because an empty table cell reads as a
+     * field that failed to collect, and the difference matters when you are deciding whether an
+     * unreproducible report can be chased.
+     */
+    private fun reach(phone: String): String =
+        Contact.tidy(phone).takeIf { it.isNotEmpty() } ?: "not given"
 
     private fun stamp(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())

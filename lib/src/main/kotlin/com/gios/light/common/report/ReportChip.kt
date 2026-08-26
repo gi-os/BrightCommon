@@ -97,9 +97,13 @@ fun ReportChip(reason: ReportReason, onOpen: () -> Unit, onExpire: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
+                    // "FEEDBACK" rather than "ERROR" for a shake, because a shake now leads to
+                    // a sheet that takes an idea as readily as a bug — and a chip that only
+                    // offers to report an error is a chip nobody taps to ask for a feature.
                     text = when (reason) {
                         ReportReason.Crashed -> "IT CRASHED · SEND?"
-                        else -> "SEND ERROR?"
+                        ReportReason.Failed -> "SEND ERROR?"
+                        ReportReason.Shaken -> "SEND FEEDBACK?"
                     },
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontSize = 11.sp,

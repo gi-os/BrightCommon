@@ -67,6 +67,7 @@ fun ReportOverlay() {
     var pending by remember { mutableStateOf<ReportReason?>(null) }
     var sheetOpen by remember { mutableStateOf(false) }
     val failure by Trouble.latest.collectAsState()
+    val asked by Feedback.asked.collectAsState()
 
     // Read once. The file is deleted as soon as it has been offered, so that a crash is asked
     // about on the next launch and not on every launch after it.
@@ -83,6 +84,13 @@ fun ReportOverlay() {
     LaunchedEffect(Unit) {
         runCatching { Reports.flush(context) }
         if (!crash.isNullOrBlank()) pending = ReportReason.Crashed
+    }
+
+    // An app asking on the user's behalf — a "Send feedback" row in settings. Routed through the
+    // same chip as everything else rather than opening the sheet, so there is exactly one
+    // confirmation step in this feature and one place it appears. See [Feedback].
+    LaunchedEffect(asked) {
+        if (asked > 0 && pending == null && !sheetOpen) pending = ReportReason.Shaken
     }
 
     // A failure the app noticed itself only raises the offer if nothing else already has:
@@ -136,21 +144,29 @@ fun ReportOverlay() {
             reason = why,
             failure = if (why == ReportReason.Failed) failure?.what else null,
             appName = LightReport.appName,
+            // Read once per open rather than held in state up here: the sheet owns the field,
+            // and this is only the value it starts with.
+            knownPhone = remember { Contact.phone(context) },
             onDismiss = {
                 sheetOpen = false
                 pending = null
                 Trouble.clear()
                 if (why == ReportReason.Crashed) CrashLog.clear(context)
             },
-            onSend = { symptom, note ->
+            onSend = { draft ->
                 val report = Reports.compose(
                     context = context,
-                    symptom = symptom,
-                    note = note,
+                    draft = draft,
                     screen = ReportContext.screen,
+                    // An idea is not about a crash even when there was one. compose() drops it
+                    // on that branch; passing it anyway would only matter if that changed.
                     crash = crash,
                     failure = if (why == ReportReason.Failed) failure else null,
                 )
+                // Kept for next time, on send and not on every keystroke. A half-typed number
+                // is not worth remembering, and the second report is the one that gets
+                // abandoned at a field you have already filled in once.
+                Contact.remember(context, draft.phone)
                 // Closed before the send, not after: submit() queues to disk first, so there is
                 // nothing here that can fail in a way the sheet would need to report.
                 sheetOpen = false

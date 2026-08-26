@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,7 +42,7 @@ import androidx.compose.ui.unit.sp
 enum class ReportReason { Shaken, Crashed, Failed }
 
 /**
- * What went wrong, once you have said you want to tell somebody.
+ * What went wrong — or what you wish the app did — once you have said you want to tell somebody.
  *
  * **Deliberately self-contained.** The version of this in LightCamera leans on that app's own
  * `LightChip`, `LightWideButton`, `LightListRow` and theme tokens, which is why it has never
@@ -51,10 +53,18 @@ enum class ReportReason { Shaken, Crashed, Failed }
  * The greys are the LightOS three — background, content, contentSecondary — read from the host
  * app's own colour scheme where possible so a sheet in a light-themed app is not a black hole.
  *
- * It assumes typing on this phone is expensive: a chip is a complete report on its own, and the
- * note is optional. But the note is also the only part that carries anything the build table
+ * It assumes typing on this phone is expensive: a chip is a complete report on its own, and every
+ * text field is optional. But the note is also the only part that carries anything the build table
  * cannot — "standings empty for the WNBA" is a bug, "Something looks wrong" is a shrug — so it
  * takes the headline in the issue title whenever it is filled in.
+ *
+ * Three things stack top to bottom, and the order is the argument:
+ *
+ *  - **BUG or IDEA**, first, because it changes what the row underneath means. Only offered for a
+ *    shake: a crash and a failure the app caught are not suggestions, and a sheet that invites you
+ *    to file a stack trace as a feature request is a sheet that files miscategorised issues.
+ *  - **The chips**, which are a complete report on their own.
+ *  - **A note and a number**, both optional, both skippable with one tap on SEND.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,13 +74,21 @@ fun ReportSheet(
     failure: String? = null,
     /** How the app calls itself in the sentence "X could not …". */
     appName: String = "This app",
+    /** The number given last time, so a second report does not retype it. See [Contact]. */
+    knownPhone: String = "",
     onDismiss: () -> Unit,
-    onSend: (symptom: Symptom, note: String) -> Unit,
+    onSend: (Draft) -> Unit,
 ) {
+    // A crash or a caught failure is a bug and cannot be anything else, so the toggle is not
+    // shown for them — and the state still starts on Bug, so nothing depends on it being hidden.
+    val choosable = reason == ReportReason.Shaken
+    var kind by remember { mutableStateOf(Kind.Bug) }
     var symptom by remember {
         mutableStateOf(if (reason == ReportReason.Crashed) Symptom.Crashed else Symptom.Other)
     }
+    var wish by remember { mutableStateOf(Wish.New) }
     var note by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf(knownPhone) }
     val scroll = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -99,36 +117,71 @@ fun ReportSheet(
                 )
             }
 
-            SheetLabel("WHAT HAPPENED", secondary)
-            // Two per row rather than five full-width rows: five rows would push the note
-            // field and the send button off a 3.92" panel.
-            Column(
-                Modifier.padding(top = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Symptom.entries.chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { option ->
-                            SheetChip(
-                                label = option.chip,
-                                selected = symptom == option,
-                                content = content,
-                                secondary = secondary,
-                                modifier = Modifier.weight(1f),
-                            ) { symptom = option }
-                        }
-                        // Five is odd; the last chip keeps its half rather than stretching.
-                        if (pair.size == 1) Box(Modifier.weight(1f))
+            if (choosable) {
+                SheetLabel("WHAT IS THIS", secondary)
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Kind.entries.forEach { option ->
+                        SheetChip(
+                            label = option.chip,
+                            selected = kind == option,
+                            content = content,
+                            secondary = secondary,
+                            modifier = Modifier.weight(1f),
+                        ) { kind = option }
                     }
                 }
             }
 
-            SheetLabel("NOTE", secondary, Modifier.padding(top = 22.dp))
-            NoteField(
-                value = note,
-                onValueChange = { note = it },
+            SheetLabel(
+                text = if (kind == Kind.Bug) "WHAT HAPPENED" else "WHAT WOULD YOU LIKE",
+                color = secondary,
+                modifier = Modifier.padding(top = if (choosable) 22.dp else 0.dp),
+            )
+            // Two per row rather than five full-width rows: five rows would push the note
+            // field and the send button off a 3.92" panel.
+            ChipGrid(
+                labels = if (kind == Kind.Bug) {
+                    Symptom.entries.map { it.chip }
+                } else {
+                    Wish.entries.map { it.chip }
+                },
+                selected = if (kind == Kind.Bug) symptom.ordinal else wish.ordinal,
                 content = content,
                 secondary = secondary,
+                modifier = Modifier.padding(top = 10.dp),
+            ) { index ->
+                if (kind == Kind.Bug) symptom = Symptom.entries[index] else wish = Wish.entries[index]
+            }
+
+            SheetLabel("NOTE", secondary, Modifier.padding(top = 22.dp))
+            SheetField(
+                value = note,
+                onValueChange = { note = it },
+                placeholder = if (kind == Kind.Bug) {
+                    "What were you doing? (optional)"
+                } else {
+                    "What should it do? (optional)"
+                },
+                content = content,
+                secondary = secondary,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+
+            // A number, not a chat handle. A report is a one-way statement — a chip row, a
+            // sentence and a build table — and the one thing that turns an unreproducible one
+            // into a fixed bug is being able to ask a follow-up question. Everybody running
+            // these apps is, by definition, reachable on a phone.
+            SheetLabel("PHONE", secondary, Modifier.padding(top = 22.dp))
+            SheetField(
+                value = phone,
+                onValueChange = { phone = it },
+                placeholder = "So I can ask more (optional)",
+                content = content,
+                secondary = secondary,
+                keyboard = KeyboardType.Phone,
                 modifier = Modifier.padding(top = 8.dp),
             )
 
@@ -152,15 +205,28 @@ fun ReportSheet(
                     content = content,
                     secondary = secondary,
                     modifier = Modifier.weight(1f),
-                ) { onSend(symptom, note) }
+                ) {
+                    onSend(
+                        Draft(
+                            kind = kind,
+                            symptom = symptom,
+                            wish = wish,
+                            note = note,
+                            phone = phone,
+                        ),
+                    )
+                }
             }
 
             Text(
-                text = if (Reports.canSend()) {
-                    "Goes to the private light-reports tracker, with the build details and the " +
-                        "last crash attached."
-                } else {
-                    "This build has no reporting key, so it will wait on the phone until one does."
+                text = when {
+                    !Reports.canSend() ->
+                        "This build has no reporting key, so it will wait on the phone until one does."
+                    kind == Kind.Idea ->
+                        "Goes to the private light-reports tracker as an idea, with your app version."
+                    else ->
+                        "Goes to the private light-reports tracker, with the build details and the " +
+                            "last crash attached."
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = secondary,
@@ -182,6 +248,41 @@ private fun SheetLabel(text: String, color: Color, modifier: Modifier = Modifier
         color = color,
         modifier = modifier,
     )
+}
+
+/**
+ * Chips two to a row, selected by index.
+ *
+ * By index rather than by enum, because the row shows symptoms or wishes depending on a toggle
+ * above it and two near-identical generic overloads is a worse trade than one integer. An odd
+ * last chip keeps its half of the row instead of stretching to fill it.
+ */
+@Composable
+private fun ChipGrid(
+    labels: List<String>,
+    selected: Int,
+    content: Color,
+    secondary: Color,
+    modifier: Modifier = Modifier,
+    onSelect: (Int) -> Unit,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        labels.chunked(2).forEachIndexed { row, pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEachIndexed { column, label ->
+                    val index = row * 2 + column
+                    SheetChip(
+                        label = label,
+                        selected = index == selected,
+                        content = content,
+                        secondary = secondary,
+                        modifier = Modifier.weight(1f),
+                    ) { onSelect(index) }
+                }
+                if (pair.size == 1) Box(Modifier.weight(1f))
+            }
+        }
+    }
 }
 
 /**
@@ -222,26 +323,31 @@ private fun SheetChip(
 }
 
 /**
- * A one-line note, underlined rather than boxed.
+ * A one-line field, underlined rather than boxed.
  *
  * Material's filled container and floating label appear nowhere in LightOS, so this is a
  * [BasicTextField] over a rule — the same shape as the SDK's own `LightTextField`. The
  * placeholder sits behind the field rather than floating away, because on a screen this size a
  * label that moves is a label you lose.
+ *
+ * `keyboard` exists for the phone field: on a keypad-first phone the difference between the
+ * number pad and the alphabet is the difference between four taps and forty.
  */
 @Composable
-private fun NoteField(
+private fun SheetField(
     value: String,
     onValueChange: (String) -> Unit,
+    placeholder: String,
     content: Color,
     secondary: Color,
     modifier: Modifier = Modifier,
+    keyboard: KeyboardType = KeyboardType.Text,
 ) {
     Column(modifier) {
         Box(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             if (value.isEmpty()) {
                 Text(
-                    text = "What were you doing? (optional)",
+                    text = placeholder,
                     style = MaterialTheme.typography.bodyMedium,
                     color = secondary,
                 )
@@ -251,6 +357,8 @@ private fun NoteField(
                 onValueChange = onValueChange,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = content),
                 cursorBrush = SolidColor(content),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

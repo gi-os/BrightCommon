@@ -1,3 +1,67 @@
+## light-common 1.3.0 — whose phone it was, and a chip that takes an idea
+
+Three additions to `report/`, all reached through the same chip in the corner. Nothing new opens
+a sheet on its own.
+
+**A report now says which phone filed it.** Every device in this fleet is a Light Phone III, so
+`Build.MODEL` could never tell Gio's bench report from a stranger's — and the two are read
+completely differently. His are reproducible on the desk and usually half-diagnosed by the shake
+that raised them; a stranger's report is the only account of that bug that will ever exist.
+`Device` derives an eight-hex install id from `ANDROID_ID`, hashed with a fixed salt so the value
+in an issue cannot be turned back into the identifier it came from, and labels the issue `mine` or
+`field`.
+
+The id is **stable across the whole fleet**, which is what makes an allowlist worth keeping:
+`ANDROID_ID` is scoped per signing key since Android 8, and every Bright\* app is signed with the
+same keystore, so one phone produces one id in all of them. A debug flavour would have been the
+obvious mechanism and is the wrong one — every APK on Gio's phone is the same release build CI cut
+for everybody else, so the flag would be false on the one device it is meant to catch.
+
+`Device.KNOWN_OWNERS` starts empty, on purpose. The first report from his phone reads
+`unregistered (3f9a21c8)` and carries the id that fixes it; adding one line there is cheaper than
+shipping a registration flow to a fleet of one. A debuggable build already counts as his, because
+nobody else has one. `Device.summary(context)` is a line for a diagnostics screen so the id can be
+read off the phone rather than waited for.
+
+**BUG or IDEA, at the top of the sheet.** A feature request used to have no route off the phone at
+all — no browser, no email, a private tracker nobody outside can see — so the moment somebody knew
+what they wished the app did instead was the moment it was lost. The shake now leads to a sheet
+that takes either, and the corner chip says `SEND FEEDBACK?` rather than `SEND ERROR?`, because a
+chip that only offers to report an error is a chip nobody taps to ask for a feature. An idea is a
+different document, not a bug report with empty sections: no stack trace, no heap figure, no free
+space, labelled `enhancement` plus one of `idea-new` / `idea-change` / `idea-missing` /
+`idea-other`, and titled `AppName v1.2 — idea: …`.
+
+The toggle only appears for a shake. A crash and a failure the app caught itself are bugs and
+cannot be anything else, and a sheet that invites you to file a stack trace as a feature request
+files miscategorised issues.
+
+**An optional phone number.** A report has always been a one-way statement — a chip row, a
+sentence, a build table — with no way to ask the one question that would settle it. The field asks
+for a number rather than pointing at a chat server nobody has joined: everybody running these apps
+is, by definition, reachable on a phone. Empty is fine and the body says `not given` rather than
+leaving a blank cell, which reads as a field that failed to collect. It is remembered between
+reports (on send, not per keystroke) because the second report is the one abandoned at a field you
+already filled in once, and `Contact.forget(context)` clears it. Nothing validates it — a reporter
+who writes "917 turn 4 to 8" has told you something, and a field that rejects it has thrown the
+report away to enforce a format only a machine cares about.
+
+**`Feedback.ask()`** raises the offer from inside the app, for a "Send feedback" row in settings.
+It raises *the chip*, not the sheet, so there is one confirmation step in this feature and one
+place it appears; a settings row that opened the sheet directly would be a second, quieter path
+with different behaviour, and the two would drift.
+
+### Breaking
+
+- `ReportSheet`'s `onSend` now hands up a single `Draft` instead of `(Symptom, String)`.
+- `Reports.compose` takes a `Draft`. The old body-building path is `Reports.composeBug`, with the
+  same parameters in the same order plus a defaulted `phone` at the end.
+
+Apps using `ReportOverlay()` — which is all of them — need nothing but the version bump. New
+labels (`mine`, `field`, `self-reported`, `idea-*`) exist in `gi-os/light-reports` already;
+`self-reported` had never been created, so a self-reported issue would have been the first to find
+out.
+
 ## light-common 1.2.3 — the wheel click, on a phone that spells its button device differently
 
 `LightKeys` has two ways in: resolve Light's keylayout label to a keycode, or fall back to the

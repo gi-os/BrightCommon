@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.2.0")
+implementation("com.gios:light-common:1.3.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous
@@ -113,6 +113,40 @@ Two rules, both learned the hard way:
 `Trouble.record(what, throwable)` is the same call with the exception's class and message filled
 in. Both are `@Synchronized`, cheap, and rate-limited per `what` to once an hour, so calling one
 from inside a catch block that is already handling something worse is safe.
+
+**3c. Optional: a "Send feedback" row.**
+
+```kotlin
+LightListRow("Send feedback") { Feedback.ask() }
+```
+
+`Feedback.ask()` raises the chip in the corner — the same one a shake raises, not a sheet. A
+settings row that opened the sheet directly would be a second path with different behaviour, and
+this feature has exactly one confirmation step on purpose.
+
+**3d. Optional: show the install id somewhere.**
+
+```kotlin
+Text(Device.summary(context))     // "Install 3f9a21c8 · unregistered"
+```
+
+Every phone in this fleet is a Light Phone III, so nothing in an issue could say whether it came
+from your own bench or from somebody who installed the app from BrightMarket. `Device` derives an
+eight-hex id from `ANDROID_ID`, hashed with a fixed salt, and labels the issue `mine` or `field`.
+
+The id is the same in every Bright\* app on a given phone — `ANDROID_ID` is scoped per signing
+key and they share a keystore — which is what makes the allowlist in `Device.KNOWN_OWNERS` worth
+keeping. It starts empty: the first report from your own phone arrives as `unregistered (3f9a21c8)`
+and carries the id to paste in. A debuggable build already counts as yours.
+
+**3e. What the sheet collects.**
+
+A shake opens on **BUG or IDEA**. Bugs produce the body the tracker has always had; an idea is a
+shorter document labelled `enhancement` plus one of `idea-new` / `idea-change` / `idea-missing` /
+`idea-other`. A crash, or a failure caught by `Trouble.record`, is a bug and the toggle is hidden.
+
+Both take an optional **phone number** so a report can be answered with a question rather than
+re-run. It is remembered between reports; `Contact.forget(context)` clears it.
 
 **4. The wheel, if you use it.**
 
