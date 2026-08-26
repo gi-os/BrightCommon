@@ -76,6 +76,11 @@ fun ReportSheet(
     appName: String = "This app",
     /** The number given last time, so a second report does not retype it. See [Contact]. */
     knownPhone: String = "",
+    /**
+     * Whether a picture of the screen was taken when the offer went up. False also covers the
+     * copy having failed, which is why the row says so rather than disappearing.
+     */
+    hasScreenshot: Boolean = false,
     onDismiss: () -> Unit,
     onSend: (Draft) -> Unit,
 ) {
@@ -89,6 +94,7 @@ fun ReportSheet(
     var wish by remember { mutableStateOf(Wish.New) }
     var note by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf(knownPhone) }
+    var withShot by remember { mutableStateOf(hasScreenshot) }
     val scroll = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -185,6 +191,22 @@ fun ReportSheet(
                 modifier = Modifier.padding(top = 8.dp),
             )
 
+            // On by default and one tap to turn off. The picture is the difference between
+            // "LOOKS OFF" being actionable and being a shrug, so the default has to be attach —
+            // but it is a picture of whatever was on screen, so it must always be refusable.
+            SheetLabel("SCREENSHOT", secondary, Modifier.padding(top = 22.dp))
+            SheetChip(
+                label = when {
+                    !hasScreenshot -> "NONE TAKEN"
+                    withShot -> "ATTACHED"
+                    else -> "NOT ATTACHED"
+                },
+                selected = withShot && hasScreenshot,
+                content = content,
+                secondary = secondary,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) { if (hasScreenshot) withShot = !withShot }
+
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -213,6 +235,7 @@ fun ReportSheet(
                             wish = wish,
                             note = note,
                             phone = phone,
+                            includeShot = withShot && hasScreenshot,
                         ),
                     )
                 }
@@ -224,6 +247,9 @@ fun ReportSheet(
                         "This build has no reporting key, so it will wait on the phone until one does."
                     kind == Kind.Idea ->
                         "Goes to the private light-reports tracker as an idea, with your app version."
+                    withShot && hasScreenshot ->
+                        "Goes to the private light-reports tracker, with the build details, the " +
+                            "last crash and the screenshot attached."
                     else ->
                         "Goes to the private light-reports tracker, with the build details and the " +
                             "last crash attached."

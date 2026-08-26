@@ -1,3 +1,42 @@
+## light-common 1.4.0 — the screenshot, and the last three apps
+
+No new feature on the phone. This is the release that lets BrightMusic, Roll and BrightNotebook
+stop carrying their own `report/`, which they have done since the library existed for one reason:
+`Screenshot.kt`. Migrating them without it would have silently dropped the picture from every
+issue they file, and a report saying "LOOKS OFF" with a screenshot is a different class of thing
+from one without.
+
+**`Screenshot`** is Roll's, behaviour unchanged: `PixelCopy` off the app's own window (no
+permission, because nothing outside the app is being read), greyscaled and shrunk down a
+360/280/200px ladder until it fits 30KB, base64 inside the issue body inside a `<details>`.
+Uploading a file instead would need `contents: write` on a token that ships inside a sideloaded
+APK; `issues: write` alone means a lifted key can only write junk into one private tracker.
+
+**Taken when the offer goes up, not when the sheet asks.** `ReportOverlay` grabs the window the
+moment a shake, a `Trouble.record` or a `Feedback.ask()` raises the chip — by the time the sheet is
+open, the chip and the sheet are what is on screen and the thing that looked wrong is behind them.
+It is held as a `Bitmap` and encoded only on send, because most offers are ignored rather than
+tapped. A crash gets no picture at all: that offer appears on the launch *after* the one that
+died.
+
+**A SCREENSHOT row in the sheet**, attached by default, one tap to refuse, and it says `NONE TAKEN`
+rather than disappearing when `PixelCopy` came back empty — a row that vanishes reads as a feature
+that was never there. Ideas carry a picture too: "this row should show the year" is a sentence that
+needs the row.
+
+**`ShakeMonitor` / `ShakeReading`** came over in the same pass. BrightNotebook's settings screen
+shows the live g-force readout, and it exists because "I shook it and nothing happened" cannot be
+answered from a phone with no logcat attached — with the numbers on screen the question becomes "it
+peaked at 1.2g and needs 1.38g". Publishing is gated on `ShakeMonitor.watchers`, so the 50Hz stream
+costs nothing unless a screen is actually displaying it.
+
+### API
+
+- `Draft` gains `includeShot` (defaulted true).
+- `Reports.compose` gains `shot: String?`, as do `composeBug` and `composeIdea`. Both defaulted, so
+  existing calls are untouched.
+- New: `Screenshot`, `ShakeMonitor`, `ShakeReading`.
+
 ## light-common 1.3.0 — whose phone it was, and a chip that takes an idea
 
 Three additions to `report/`, all reached through the same chip in the corner. Nothing new opens

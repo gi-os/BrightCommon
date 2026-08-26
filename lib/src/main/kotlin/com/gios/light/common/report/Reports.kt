@@ -68,6 +68,11 @@ data class Draft(
     val note: String,
     /** Optional. Empty means the reporter did not want to be called back, which is allowed. */
     val phone: String,
+    /**
+     * Whether to attach the picture taken when the offer was raised. Ignored when there is no
+     * picture — a failed `PixelCopy` and a declined attachment look the same from here on.
+     */
+    val includeShot: Boolean = true,
 )
 
 /** A report on its way out: exactly the three fields the issues API wants. */
@@ -112,9 +117,30 @@ object Reports {
         screen: String,
         crash: String?,
         failure: Failure? = null,
-    ): Report = when (draft.kind) {
-        Kind.Bug -> composeBug(context, draft.symptom, draft.note, screen, crash, failure, draft.phone)
-        Kind.Idea -> composeIdea(context, draft.wish, draft.note, draft.phone, screen)
+        /** Base64 PNG from [Screenshot.encode], or null. Dropped when the draft declined it. */
+        shot: String? = null,
+    ): Report {
+        val picture = shot?.takeIf { draft.includeShot }
+        return when (draft.kind) {
+            Kind.Bug -> composeBug(
+                context = context,
+                symptom = draft.symptom,
+                note = draft.note,
+                screen = screen,
+                crash = crash,
+                failure = failure,
+                phone = draft.phone,
+                shot = picture,
+            )
+            Kind.Idea -> composeIdea(
+                context = context,
+                wish = draft.wish,
+                note = draft.note,
+                phone = draft.phone,
+                screen = screen,
+                shot = picture,
+            )
+        }
     }
 
     /**
@@ -130,6 +156,7 @@ object Reports {
         note: String,
         phone: String,
         screen: String,
+        shot: String? = null,
     ): Report {
         val version = versionName(context)
         val trimmed = note.trim()
@@ -153,6 +180,9 @@ object Reports {
             appendLine("| Reporter | ${Device.reporter(context)} |")
             appendLine("| Reach them | ${reach(phone)} |")
             appendLine("| Reported | ${stamp()} |")
+            // Worth as much here as on a bug: "this row should show the year" is a sentence that
+            // needs the row.
+            appendShot(shot)
         }
         return Report(
             title = "${LightReport.appName} $version — idea: $headline",
@@ -176,6 +206,7 @@ object Reports {
         crash: String?,
         failure: Failure? = null,
         phone: String = "",
+        shot: String? = null,
     ): Report {
         val version = versionName(context)
         val trimmed = note.trim()
@@ -227,6 +258,7 @@ object Reports {
                 appendLine(crash.take(6_000))
                 appendLine("```")
             }
+            appendShot(shot)
         }
         val labels = buildList {
             add(LightReport.label)
@@ -340,6 +372,26 @@ object Reports {
      */
     private fun reach(phone: String): String =
         Contact.tidy(phone).takeIf { it.isNotEmpty() } ?: "not given"
+
+    /**
+     * The picture, folded away.
+     *
+     * Base64 inside the body rather than an uploaded file: attaching one would need
+     * `contents: write` on a token that ships inside a sideloaded APK, and `issues: write` alone
+     * means a lifted key can only write junk into one private tracker. Collapsed in a `<details>`
+     * because 30KB of base64 is the whole issue otherwise.
+     */
+    private fun StringBuilder.appendShot(shot: String?) {
+        if (shot == null) return
+        appendLine()
+        appendLine("<details><summary>Screenshot (base64 PNG, greyscale)</summary>")
+        appendLine()
+        appendLine("```")
+        appendLine(shot)
+        appendLine("```")
+        appendLine()
+        appendLine("</details>")
+    }
 
     private fun stamp(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())

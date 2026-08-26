@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.3.0")
+implementation("com.gios:light-common:1.4.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous
@@ -138,6 +138,28 @@ The id is the same in every Bright\* app on a given phone — `ANDROID_ID` is sc
 key and they share a keystore — which is what makes the allowlist in `Device.KNOWN_OWNERS` worth
 keeping. It starts empty: the first report from your own phone arrives as `unregistered (3f9a21c8)`
 and carries the id to paste in. A debuggable build already counts as yours.
+
+**3f. The screenshot, and the shake readout.**
+
+Nothing to wire: `ReportOverlay` takes the picture itself, at the moment the chip goes up rather
+than when the sheet opens, and the sheet carries a SCREENSHOT row that is attached by default and
+refusable in one tap. It is `PixelCopy` off your own window, so no permission is involved, and it
+rides in the issue body as base64 — a crash offer gets no picture, because that one appears on the
+launch after the one that died.
+
+For a settings screen that wants the live gesture readout:
+
+```kotlin
+val reading by ShakeMonitor.reading.collectAsStateWithLifecycle()
+DisposableEffect(Unit) {
+    ShakeMonitor.watch()
+    onDispose { ShakeMonitor.unwatch() }
+}
+```
+
+`watch()` is what turns the publishing on — without a watcher the detector keeps the 50Hz stream
+to itself. This exists because "I shook it and nothing happened" is unanswerable on a phone with
+no logcat attached.
 
 **3e. What the sheet collects.**
 

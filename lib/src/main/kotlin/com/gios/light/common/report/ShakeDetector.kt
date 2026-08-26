@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
@@ -18,6 +19,11 @@ import kotlin.math.sqrt
  * class only turns three floats into a magnitude and hands it over.
  */
 class ShakeDetector(context: Context, private val onShake: () -> Unit) : SensorEventListener {
+
+    private companion object {
+        /** How long the peak stays on screen before it decays — long enough to look down. */
+        const val PEAK_HOLD_MS = 2_000L
+    }
 
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val accelerometer = sensors?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -41,6 +47,12 @@ class ShakeDetector(context: Context, private val onShake: () -> Unit) : SensorE
     /** Called when the sheet opens, so the shake that opened it cannot open a second one. */
     fun forget() = gesture.reset()
 
+    // Readout state, all of it only meaningful while ShakeMonitor has a watcher.
+    private var fires = 0
+    private var peak = 0f
+    private var peakAt = 0L
+    private var sample = 0
+
     override fun onSensorChanged(event: SensorEvent) {
         val x = event.values[0]
         val y = event.values[1]
@@ -49,7 +61,32 @@ class ShakeDetector(context: Context, private val onShake: () -> Unit) : SensorE
         // The event's own timestamp is nanoseconds since boot from the sensor hub, which is
         // the right clock here: it does not drift with the main thread being busy, and being
         // busy is exactly the state a freeze report is filed in.
-        if (gesture.sample(event.timestamp / 1_000_000L, magnitude)) onShake()
+        val at = event.timestamp / 1_000_000L
+        val fired = gesture.sample(at, magnitude)
+        if (fired) {
+            fires++
+            onShake()
+        }
+
+        // Nothing below this line runs unless a settings screen is displaying the readout.
+        if (ShakeMonitor.watchers == 0) return
+        val deviation = abs(magnitude - 1f)
+        if (deviation > peak || at - peakAt > PEAK_HOLD_MS) {
+            peak = deviation
+            peakAt = at
+        }
+        // Every third sample is about 16Hz, which is faster than anyone can read and a third
+        // of the recompositions.
+        if (++sample % 3 != 0 && !fired) return
+        ShakeMonitor.publish(
+            ShakeReading(
+                magnitudeG = magnitude,
+                peakG = 1f + peak,
+                turns = gesture.turns,
+                turnsNeeded = gesture.turnsNeeded,
+                fires = fires,
+            ),
+        )
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit

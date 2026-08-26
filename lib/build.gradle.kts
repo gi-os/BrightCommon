@@ -7,7 +7,7 @@ plugins {
 
 // Bumped by hand, one minor step per change, the same rule the apps follow. The publish
 // workflow reads this to tag the release, so it is the single source of truth for the version.
-val libraryVersion = "1.3.0"
+val libraryVersion = "1.4.0"
 
 android {
     namespace = "com.gios.light.common"

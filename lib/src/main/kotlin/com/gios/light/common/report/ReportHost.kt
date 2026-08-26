@@ -9,7 +9,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import android.app.Activity
 import android.content.ContextWrapper
+import android.graphics.Bitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -66,6 +68,29 @@ fun ReportOverlay() {
     // sheet over whatever you were reading, and the only way out was to dismiss it.
     var pending by remember { mutableStateOf<ReportReason?>(null) }
     var sheetOpen by remember { mutableStateOf(false) }
+
+    // The picture of the screen as it was when the offer went up — see [Screenshot]. Held as a
+    // Bitmap and encoded only on send: encoding is a PNG compress and a base64 pass, and most
+    // offers are ignored rather than tapped.
+    var shot by remember { mutableStateOf<Bitmap?>(null) }
+    val activity = remember(context) {
+        generateSequence(context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>()
+            .firstOrNull()
+    }
+    // Taken at the moment something raises the offer, not when the sheet asks: by then the chip
+    // and the sheet are what is on screen, and the thing that looked wrong is behind them.
+    val grab: (ReportReason) -> Unit = { why ->
+        val window = activity?.window
+        if (window == null) {
+            pending = why
+        } else {
+            Screenshot.capture(window) { bitmap ->
+                shot = bitmap
+                pending = why
+            }
+        }
+    }
     val failure by Trouble.latest.collectAsState()
     val asked by Feedback.asked.collectAsState()
 
@@ -75,7 +100,7 @@ fun ReportOverlay() {
 
     val detector = remember {
         ShakeDetector(context) {
-            if (pending == null && !sheetOpen) pending = ReportReason.Shaken
+            if (pending == null && !sheetOpen) grab(ReportReason.Shaken)
         }
     }
 
@@ -83,6 +108,8 @@ fun ReportOverlay() {
     // that had no token at all — goes out now.
     LaunchedEffect(Unit) {
         runCatching { Reports.flush(context) }
+        // No screenshot for a crash: this is the launch after the one that died, so the window
+        // holds whatever has just started rather than what went wrong.
         if (!crash.isNullOrBlank()) pending = ReportReason.Crashed
     }
 
@@ -90,13 +117,13 @@ fun ReportOverlay() {
     // same chip as everything else rather than opening the sheet, so there is exactly one
     // confirmation step in this feature and one place it appears. See [Feedback].
     LaunchedEffect(asked) {
-        if (asked > 0 && pending == null && !sheetOpen) pending = ReportReason.Shaken
+        if (asked > 0 && pending == null && !sheetOpen) grab(ReportReason.Shaken)
     }
 
     // A failure the app noticed itself only raises the offer if nothing else already has:
     // being asked about a stale feed on top of a crash report is how people turn this off.
     LaunchedEffect(failure) {
-        if (failure != null && pending == null && !sheetOpen) pending = ReportReason.Failed
+        if (failure != null && pending == null && !sheetOpen) grab(ReportReason.Failed)
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -133,6 +160,8 @@ fun ReportOverlay() {
                 // launch can offer it again; only the in-memory failure is dropped, and
                 // Trouble will not re-raise the same one for an hour.
                 pending = null
+                // A picture nobody asked for is a few megabytes of ARGB_8888 held for nothing.
+                shot = null
                 if (why == ReportReason.Failed) Trouble.clear()
                 detector.forget()
             },
@@ -147,9 +176,11 @@ fun ReportOverlay() {
             // Read once per open rather than held in state up here: the sheet owns the field,
             // and this is only the value it starts with.
             knownPhone = remember { Contact.phone(context) },
+            hasScreenshot = shot != null,
             onDismiss = {
                 sheetOpen = false
                 pending = null
+                shot = null
                 Trouble.clear()
                 if (why == ReportReason.Crashed) CrashLog.clear(context)
             },
@@ -162,6 +193,9 @@ fun ReportOverlay() {
                     // on that branch; passing it anyway would only matter if that changed.
                     crash = crash,
                     failure = if (why == ReportReason.Failed) failure else null,
+                    // Encoded here rather than at capture: this is the one point where the
+                    // picture is known to be wanted. Null when it did not fit even at 200px.
+                    shot = shot?.takeIf { draft.includeShot }?.let { Screenshot.encode(it) },
                 )
                 // Kept for next time, on send and not on every keystroke. A half-typed number
                 // is not worth remembering, and the second report is the one that gets
@@ -171,6 +205,7 @@ fun ReportOverlay() {
                 // nothing here that can fail in a way the sheet would need to report.
                 sheetOpen = false
                 pending = null
+                shot = null
                 Trouble.clear()
                 CrashLog.clear(context)
                 scope.launch { runCatching { Reports.submit(context, report) } }
