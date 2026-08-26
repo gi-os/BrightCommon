@@ -77,6 +77,8 @@ setContent {
     LightTipTheme {
         App()
         ReportOverlay()   // a sibling, not a wrapper
+        // …or place the chip where your chrome allows:
+        // ReportOverlay(corner = Alignment.BottomEnd, bottomInset = 72.dp)
     }
 }
 ```

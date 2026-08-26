@@ -12,7 +12,10 @@ import androidx.compose.runtime.setValue
 import android.app.Activity
 import android.content.ContextWrapper
 import android.graphics.Bitmap
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
@@ -43,7 +46,12 @@ import kotlinx.coroutines.launch
  * the app, and shaking a phone that is showing something else has nothing to do with this one.
  */
 @Composable
-fun ReportOverlay() {
+fun ReportOverlay(
+    /** Where the offer sits. See [ReportChip] for why this is a parameter at all. */
+    corner: Alignment = Alignment.BottomStart,
+    inset: Dp = 16.dp,
+    bottomInset: Dp = inset,
+) {
     // An app that never called LightReport.install gets nothing: no sensor, no crash offer,
     // no queue. Opting in is a positive act, and forgetting it should be quiet rather than a
     // half-working reporter that files issues with a blank app name.
@@ -154,6 +162,9 @@ fun ReportOverlay() {
         LaunchedEffect(why) { detector.forget() }
         ReportChip(
             reason = why,
+            corner = corner,
+            inset = inset,
+            bottomInset = bottomInset,
             onOpen = { sheetOpen = true },
             onExpire = {
                 // Silence is "not now", not "no". The crash log stays on disk so the next

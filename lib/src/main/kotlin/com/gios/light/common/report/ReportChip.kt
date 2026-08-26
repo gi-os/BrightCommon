@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,7 +57,20 @@ private const val FADE_MS = 350
  * cannot take a touch that was meant for the app underneath it.
  */
 @Composable
-fun ReportChip(reason: ReportReason, onOpen: () -> Unit, onExpire: () -> Unit) {
+fun ReportChip(
+    reason: ReportReason,
+    /**
+     * Which corner. Bottom-start by default; the apps that carried their own copy of this had
+     * chosen corners around their own chrome — Roll keeps the chip off the shutter, Notebook
+     * keeps it above a bottom bar — and moving a chip they had already placed would be a
+     * regression dressed up as consolidation.
+     */
+    corner: Alignment = Alignment.BottomStart,
+    inset: Dp = 16.dp,
+    bottomInset: Dp = inset,
+    onOpen: () -> Unit,
+    onExpire: () -> Unit,
+) {
     var shown by remember { mutableStateOf(true) }
     val density = LocalDensity.current
 
@@ -73,12 +87,15 @@ fun ReportChip(reason: ReportReason, onOpen: () -> Unit, onExpire: () -> Unit) {
     }
 
     // Inset from the corner by hand: a popup sits outside the app's padding, so it would
-    // otherwise touch the screen edge.
-    val inset = with(density) { 16.dp.roundToPx() }
+    // otherwise touch the screen edge. The horizontal sign follows the corner — a positive
+    // offset moves right, which is inward from the start edge and off-screen from the end one.
+    val horizontal = with(density) { inset.roundToPx() }
+    val vertical = with(density) { bottomInset.roundToPx() }
+    val towardsEnd = corner == Alignment.BottomEnd || corner == Alignment.TopEnd
 
     Popup(
-        alignment = Alignment.BottomStart,
-        offset = IntOffset(inset, -inset),
+        alignment = corner,
+        offset = IntOffset(if (towardsEnd) -horizontal else horizontal, -vertical),
         properties = PopupProperties(focusable = false),
     ) {
         AnimatedVisibility(

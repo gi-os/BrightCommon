@@ -30,8 +30,15 @@ answered from a phone with no logcat attached — with the numbers on screen the
 peaked at 1.2g and needs 1.38g". Publishing is gated on `ShakeMonitor.watchers`, so the 50Hz stream
 costs nothing unless a screen is actually displaying it.
 
+**The chip's corner is a parameter now.** Each of the three apps had already placed its own chip
+around its own chrome — Roll bottom-start to stay off the shutter, BrightNotebook bottom-end and
+raised above a bottom bar — and moving a chip they had already positioned would be a regression
+dressed up as consolidation. `ReportOverlay(corner =, inset =, bottomInset =)` defaults to exactly
+where it was.
+
 ### API
 
+- `ReportOverlay` and `ReportChip` gain `corner`, `inset`, `bottomInset`, all defaulted.
 - `Draft` gains `includeShot` (defaulted true).
 - `Reports.compose` gains `shot: String?`, as do `composeBug` and `composeIdea`. Both defaulted, so
   existing calls are untouched.
