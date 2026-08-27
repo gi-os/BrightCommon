@@ -7,7 +7,7 @@ plugins {
 
 // Bumped by hand, one minor step per change, the same rule the apps follow. The publish
 // workflow reads this to tag the release, so it is the single source of truth for the version.
-val libraryVersion = "1.5.0"
+val libraryVersion = "1.6.0"
 
 android {
     namespace = "com.gios.light.common"
@@ -32,6 +32,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // The colour client talks to BrightControl over an AIDL interface, and AGP 8 leaves AIDL
+        // compilation off by default. The interface file is a copy of BrightControl's, byte for
+        // byte: an AIDL descriptor is its package and name, so the two must not drift.
+        aidl = true
     }
 
     publishing {

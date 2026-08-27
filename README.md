@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.4.0")
+implementation("com.gios:light-common:1.6.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous
@@ -198,6 +198,100 @@ read a moving highlight. For a control that really does want one step per notch,
 A Compose `Dialog` — and a `ModalBottomSheet`, which is one underneath — is a window of its own.
 Keys go to whichever window has focus, so while a sheet is up the activity never sees them and
 the wheel goes dead. `WheelInDialog()` inside the sheet fixes that.
+
+---
+
+## Colour, via BrightControl
+
+LightOS pins the whole phone to monochrome through the accessibility daltonizer. Moving that
+setting needs `WRITE_SECURE_SETTINGS`, which is `signature|privileged`: no runtime prompt, no
+LightOS screen, and no way to get it except `pm grant` from a computer or from BrightControl's own
+ADB screen. Every app that wanted to show a photograph carried the permission and its own copy of
+the writer, and lost the grant again on every reinstall.
+
+That is five grants to lose and five writers to fight. **BrightControl holds the grant and does
+the writing now, and an app asks it.**
+
+### The whole app, in one line of manifest
+
+An app with one opinion needs no code at all:
+
+```xml
+<application ...>
+    <meta-data android:name="com.gios.brightcontrol.color" android:value="color" />
+</application>
+```
+
+`color` or `mono`. BrightControl reads it off the package manager and applies it while the app is
+in front. This works on a phone where the app has never been launched, which is the argument for
+preferring it: nothing has to run for it to be true.
+
+### Screen by screen, from Compose
+
+For an app that changes its mind — a camera, a chat thread, a photo grid:
+
+```kotlin
+ColourEffect()                    // colour while this is composed
+ColourEffect(enabled = active)    // …and only while it is the visible page of a pager
+ColourEffect(want = ColourWant.Mono)
+ColourAppEffect()                 // the whole app, for an app that wants a switch rather than a tag
+```
+
+No permission in your manifest, no grant, and nothing to release by hand — leaving the
+composition releases, and so does the process dying, because the hold lives on a binder.
+
+**Every screen that draws a photograph needs its own call.** Roll shipped with the viewfinder and
+the viewer holding colour and the roll grid not, and the grid is where the photographs are.
+Overlapping holds are counted, so a pager keeping two pages composed across a swipe hands over
+with nothing on screen changing.
+
+Pass `enabled` rather than calling the effect conditionally. A composable that is sometimes not
+called is a composable whose `onDispose` sometimes does not run.
+
+### What happens when BrightControl is not there
+
+Nothing bad, and nothing silent:
+
+| On the phone | What this library does |
+| --- | --- |
+| BrightControl serving | Asks. Writes nothing itself. |
+| BrightControl installed, no grant or colour switch off | Falls back to writing the settings itself, if this app holds the grant. The request stays remembered over there, so it takes over the moment it can. |
+| BrightControl absent, this app granted | Writes the settings itself. |
+| BrightControl absent, nothing granted | Inert. No crash, no exception, no log. |
+
+`BrightColour.source(context)` returns which of those is happening, and
+`BrightColour.summary(context)` is one line for a diagnostics row — "panel mono · driven by
+BrightControl, not granted · 1 asking". That row exists because all four states look identical
+from the outside: "colour does not work" has four causes and they are fixed four different ways.
+
+### Two rules worth knowing before you migrate
+
+**Do not write these settings while BrightControl is serving.** Two writers with opinions about
+the same two settings do not average out, they alternate. BrightMusic held colour per album cover
+and put grey back between them; BrightControl answered every restore by re-asserting colour, and
+the panel flickered on every scroll. That is what `ColourSource.Provider` means: this app writes
+nothing.
+
+**Off is `mode = -1`, not `mode = 0`.** The daltonizer is a pair, and `0` *is* monochromacy — so
+`enabled = 0, mode = 0` reads back as "monochrome, currently switched off", and anything that
+reconstitutes the pair afterwards makes the screen grey again from a state every readout called
+correct. `Filter.COLOUR` is the value to use; the local writer already orders the two writes by
+direction, mode first going on and the enable flag first coming off, because the other way round
+is a visible flash of the wrong screen.
+
+### Migrating an app off its own writer
+
+1. Bump to this version and delete the app's `ColorMode.kt`.
+2. Point the existing `ColourEffect` call sites at `com.gios.light.common.color.ColourEffect`.
+   The signature is the same on purpose: this is an import change.
+3. Leave `WRITE_SECURE_SETTINGS` in the manifest for now. It is what the fallback path uses on a
+   phone with no BrightControl, and taking it out is a separate decision from this one.
+4. Ask Gio to move the app off `ColorRule.Passthrough` in BrightControl. `Passthrough` exists only
+   to stop two writers fighting, and after this there is one.
+
+The library ships ahead of the provider. Until BrightControl's `ColorService` is released, every
+call here resolves to the fallback path, which is what the app was already doing — so migrating
+early costs nothing and changes nothing until the other half lands.
 
 ---
 

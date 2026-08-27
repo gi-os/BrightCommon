@@ -1,3 +1,74 @@
+## light-common 1.6.0 — colour without a privileged permission in every app
+
+New package: `color/`. An app asks BrightControl for colour instead of holding
+`WRITE_SECURE_SETTINGS` and writing the daltonizer itself.
+
+**Why this is worth a release.** Five apps carried the same privileged permission to fight over
+the same two settings. That is five `pm grant` lines to run from a computer, five grants that die
+on the next reinstall, and five writers — and two writers with different opinions about one
+setting do not average out, they alternate. BrightMusic held colour per album cover and put grey
+back between them, BrightControl answered every restore by re-asserting colour, and the panel
+flickered on every scroll. BrightControl already holds the grant, already knows which app is in
+front, and already writes these settings as state rather than as edges. So it writes, and the app
+asks.
+
+**What an app calls.**
+
+```kotlin
+ColourEffect()                    // colour while this is composed
+ColourEffect(enabled = active)    // …and only while it is the visible page of a pager
+ColourAppEffect()                 // the whole app while it is in front
+```
+
+The signature is the one Roll and BrightChat already call, deliberately. Migrating them is an
+import change: what moved is underneath.
+
+An app whose whole self wants colour needs no code at all — one line of manifest metadata,
+`com.gios.brightcontrol.color`, which BrightControl reads off the package manager. That works on
+a phone where the app has never been launched, which is more than a call can promise.
+
+**A bound service, not a broadcast.** A hold has to end when the app holding it stops existing,
+and a broadcast has no way to say so — an app that asks for colour and is then killed would leave
+the phone repainted with nothing left to take it back, on a phone with no screen for the setting.
+One connection is one hold, and the connection dying is the release, whether the app unbound
+tidily or was never given the chance.
+
+**The reply is routing, not an acknowledgement.** BrightControl can be installed and still unable
+to act, so `want` answers with who should write: serving, inert, refused, absent, or a bind still
+in flight. While it is in flight this library writes **nothing** — guessing that BrightControl is
+absent and being told otherwise a moment later means both apps writing, for exactly as long as a
+bind takes. A beat of the screen not changing is a better wrong answer than a beat of it changing
+twice. `bindService` says no synchronously when BrightControl is not installed, so the common case
+never waits at all.
+
+**Nothing is a hard dependency.** With no provider, an app that holds the grant still writes the
+settings itself through the same call, and an app that does not is inert — no crash, no exception.
+`BrightColour.source(context)` says which of those is happening and `summary(context)` is a line
+for a diagnostics row, because all four states look identical from the outside and are fixed four
+different ways.
+
+Two lessons from the apps are baked in rather than left to the caller. Off is `mode = -1`: the
+daltonizer is a pair and `0` *is* monochromacy, so `enabled = 0, mode = 0` stores "monochrome,
+currently off" and anything that reconstitutes the pair afterwards turns the screen grey again
+from a state every readout called correct. And the two writes are ordered by direction — mode
+first going on, the enable flag first coming off — because the other way round switches on
+whatever filter was still stored, which is a visible flash of the wrong screen.
+
+### API
+
+- New: `ColourEffect`, `ColourAppEffect`, `ColourWant`, `ColourSource`, `Filter`, `BrightColour`,
+  `ColourWire`.
+- New AIDL: `com.gios.lightcontrol.IColorProvider`, byte-identical to BrightControl's copy. An
+  AIDL descriptor is its package and name, so the two must not drift.
+- `buildFeatures { aidl = true }` in the library, and a `consumer-rules.pro` keep on the generated
+  stub — R8 full mode is free to rename it in the consuming app, and a renamed descriptor binds
+  and then throws.
+- Nothing removed. An app that ignores the package is unaffected.
+
+**This ships ahead of the provider.** BrightControl's `ColorService` is not released yet, so every
+call resolves to the fallback path for now — which is what the apps were already doing. Migrating
+early costs nothing and changes nothing until the other half lands.
+
 ## light-common 1.5.0 — four things the vendored copies did that this one did not
 
 Migrating BrightMusic, Roll and BrightNotebook off their own `report/` meant reading their copies

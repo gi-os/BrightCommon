@@ -44,6 +44,16 @@
 # runtime. That is a platform call, not reflection into this library, so it needs no rule. Also
 # noted so nobody adds one.
 
+# ---------------------------------------------------------------- colour
+
+# The generated AIDL stub is reached through `Stub.asInterface`, which is an ordinary call, so
+# nothing here is reflective. The rule exists for the descriptor: an AIDL interface identifies
+# itself to the other process by its fully qualified name, and R8 full mode is free to rename it
+# in the consuming app. A renamed descriptor binds and then throws, in a package the app author
+# does not own and cannot look at.
+-keep interface com.gios.lightcontrol.IColorProvider { *; }
+-keep class com.gios.lightcontrol.IColorProvider$* { *; }
+
 # ---------------------------------------------------------------- full mode
 
 # R8 full mode assumes a class with no visible allocation is never instantiated. Compose's
