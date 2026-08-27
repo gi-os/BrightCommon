@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -61,6 +62,22 @@ internal object ColourLink {
 
     /** The state to send as soon as there is something to send it to. */
     private var pending = ColourWire.STATE_CLEAR
+
+    /**
+     * The life of this app's request, from BrightControl's point of view.
+     *
+     * A plain binder, held for as long as this process lives and handed over with every call. It
+     * exists because AIDL gives a server no per-client identity — `onBind` returns one binder to
+     * every client and `onUnbind` fires when the last of them goes — so there is nothing on that
+     * side to attach a death to, and a request with nothing to end it is a phone left repainted by
+     * an app that no longer exists. This process dying takes the binder with it, and BrightControl
+     * drops the request.
+     *
+     * One for the process, not one per hold. The holds here are already counted; a token per hold
+     * would make BrightControl count them again, differently, out of a map keyed on objects this
+     * side had stopped referring to.
+     */
+    private val token = Binder()
 
     private val connection = object : ServiceConnection {
 
@@ -156,7 +173,7 @@ internal object ColourLink {
     private fun send(state: Int) {
         val live = provider ?: return
         worker.execute {
-            val answer = runCatching { live.want(state) }.getOrDefault(ColourWire.ABSENT)
+            val answer = runCatching { live.want(state, token) }.getOrDefault(ColourWire.ABSENT)
             main.post { set(answer) }
         }
     }

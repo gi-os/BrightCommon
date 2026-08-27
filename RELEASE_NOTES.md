@@ -1,3 +1,35 @@
+## light-common 1.7.0 — the hold needs a token
+
+A wire fix to 1.6.0, found while writing the other half of it rather than on a phone. **Use this
+version, not 1.6.0.** Nothing had called the colour API yet, so the contract is corrected rather
+than versioned around.
+
+`IColorProvider.want(int state)` is now `want(int state, IBinder token)`.
+
+The design 1.6.0 shipped said "one bind is one hold, and the connection dying is the release". The
+first half is true and the second half was not implementable: **AIDL hands a server no per-client
+identity.** `onBind` returns the same binder to every client, `onUnbind` fires when the last of
+them disconnects, and `Binder.getCallingPid` is a number, not something a death can be attached to.
+So there was nothing on BrightControl's side to link a death recipient to, and the one property the
+whole design rests on — a request ending when the process that made it stops existing — had no
+mechanism under it. An app swiped away or killed while holding colour would have left the phone
+repainted with nothing to take it back, on a phone with no settings screen to undo it by hand.
+
+The token is that mechanism, and it is the ordinary Android answer to this: the client passes a
+plain `Binder` it holds for the life of its process, BrightControl links death to it, and the
+request is dropped when the process goes. One token for the process rather than one per hold — the
+holds are already counted on this side, and a token per hold would have BrightControl counting them
+again, differently, out of a map keyed on objects this side had stopped referring to.
+
+No change to anything an app calls. `ColourEffect`, `ColourAppEffect` and `BrightColour` are
+untouched; the token is created and passed inside `ColourLink`.
+
+### If you are on 1.6.0
+
+Bump. `bump-consumers` has opened a fresh PR in every consumer repo, which supersedes the 1.6.0 one
+— close that or let the newer one land on top. No call site changes either way. An app that never
+touched the colour package is unaffected by either release.
+
 ## light-common 1.6.0 — colour without a privileged permission in every app
 
 New package: `color/`. An app asks BrightControl for colour instead of holding
