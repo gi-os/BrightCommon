@@ -1,4 +1,7 @@
-## light-common 1.9.0 — a bug report can carry what the app knows
+## light-common 1.9.1 — a bug report can carry what the app knows
+
+1.9.1 over 1.9.0: in 1.9.0 the hook shipped with a private setter by mistake, so no app could set
+it. Same feature, now settable.
 
 **`LightReport.details`** is a hook an app sets once: `LightReport.details = { pageLog.dump() }`.
 Whenever a bug report is composed, the answer goes into the body as a fenced block under

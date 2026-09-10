@@ -50,6 +50,7 @@ object LightReport {
     /** False until [install] has been called. Everything in the module no-ops until it is. */
     @Volatile
     var installed: Boolean = false
+        private set
 
     /**
      * What the app knows that the phone does not: a page log, an engine version, the state of
@@ -60,7 +61,6 @@ object LightReport {
      */
     @Volatile
     var details: (() -> String?)? = null
-        private set
 
     /**
      * @param token usually `BuildConfig.REPORT_TOKEN`. Blank is fine and normal — a build with
