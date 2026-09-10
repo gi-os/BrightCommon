@@ -69,3 +69,30 @@ class ReportKindsTest {
         assertEquals(0, Wish.entries.size % 2)
     }
 }
+
+class FitTest {
+    @org.junit.Test
+    fun aShortBodyIsUntouched() {
+        val b = "hello"
+        org.junit.Assert.assertEquals(b, com.gios.light.common.report.Reports.fit(b))
+    }
+
+    @org.junit.Test
+    fun theScreenshotGoesFirst() {
+        val head = "### What happened\n\nit broke\n\n"
+        val shot = "<details><summary>Screenshot</summary>\n\n```\n" + "A".repeat(70_000) + "\n```\n</details>"
+        val out = com.gios.light.common.report.Reports.fit(head + shot)
+        org.junit.Assert.assertTrue(out.startsWith(head))
+        org.junit.Assert.assertFalse(out.contains("AAAA"))
+        org.junit.Assert.assertTrue(out.contains("screenshot was dropped"))
+    }
+
+    @org.junit.Test
+    fun aBodyWithNoScreenshotLosesItsMiddle() {
+        val out = com.gios.light.common.report.Reports.fit("HEAD" + "x".repeat(70_000) + "TAIL")
+        org.junit.Assert.assertTrue(out.length <= 60_000)
+        org.junit.Assert.assertTrue(out.startsWith("HEAD"))
+        org.junit.Assert.assertTrue(out.endsWith("TAIL"))
+        org.junit.Assert.assertTrue(out.contains("cut from the middle"))
+    }
+}

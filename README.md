@@ -44,7 +44,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 // app/build.gradle.kts
-implementation("com.gios:light-common:1.9.1")
+implementation("com.gios:light-common:1.10.0")
 ```
 
 GitHub Packages requires authentication **even for public packages** — there is no anonymous

@@ -186,7 +186,7 @@ object Reports {
         }
         return Report(
             title = "${LightReport.appName} $version — idea: $headline",
-            body = body,
+            body = fit(body),
             labels = listOf(LightReport.label, Kind.Idea.slug, wish.slug, Device.label(context)),
         )
     }
@@ -282,9 +282,37 @@ object Reports {
         }
         return Report(
             title = "${LightReport.appName} $version — $headline",
-            body = body,
+            body = fit(body),
             labels = labels,
         )
+    }
+
+    /**
+     * A body GitHub will accept.
+     *
+     * The API refuses an issue body over 65,536 characters with a 422, and [post] treats 422 as
+     * undeliverable and deletes the file — correctly, since no later build could post it either.
+     * The result was a report sent from a phone that simply never appeared, with nothing on
+     * either side to say so. The apps that hit it are the ones with the most to say: a browser's
+     * page log plus a base64 screenshot clears the cap on a bad day.
+     *
+     * So the body is trimmed here, before it is queued, in the order things are worth losing:
+     * the screenshot first, because the words describe what it shows; then the middle of the
+     * body, keeping the head (what happened, where, the build table) and the tail. What went is
+     * always said out loud, so a thin report is never mistaken for a whole one.
+     */
+    internal fun fit(body: String, cap: Int = 60_000): String {
+        if (body.length <= cap) return body
+        val marker = "<details><summary>Screenshot"
+        val withoutShot = body.indexOf(marker).takeIf { it >= 0 }?.let {
+            body.substring(0, it) + "_The screenshot was dropped: the report was too long for the tracker._\n"
+        } ?: body
+        if (withoutShot.length <= cap) return withoutShot
+        val keepHead = (cap * 2) / 3
+        val keepTail = cap - keepHead - 200
+        return withoutShot.take(keepHead) +
+            "\n\n_… ${withoutShot.length - keepHead - keepTail} characters cut from the middle: too long for the tracker._\n\n" +
+            withoutShot.takeLast(keepTail)
     }
 
     /** The app's own account, from [LightReport.details]; a hook that throws adds nothing. */
