@@ -234,6 +234,14 @@ object Reports {
             appendLine()
             appendLine("On the `$screen` screen.")
             appendLine()
+            details()?.let {
+                appendLine("### What the app knows")
+                appendLine()
+                appendLine("```")
+                appendLine(it)
+                appendLine("```")
+                appendLine()
+            }
             appendLine("### Build")
             appendLine()
             appendLine("| | |")
@@ -278,6 +286,10 @@ object Reports {
             labels = labels,
         )
     }
+
+    /** The app's own account, from [LightReport.details]; a hook that throws adds nothing. */
+    private fun details(): String? =
+        runCatching { LightReport.details?.invoke() }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.take(8_000)
 
     /**
      * Write the report to disk, then try to send everything waiting.

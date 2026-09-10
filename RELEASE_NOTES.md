@@ -1,17 +1,13 @@
-## light-common 1.8.0 — the report sheet's note field stays above the keyboard
+## light-common 1.9.0 — a bug report can carry what the app knows
 
-**Typing a long note into a report pushed the line you were writing behind the keyboard.**
+**`LightReport.details`** is a hook an app sets once: `LightReport.details = { pageLog.dump() }`.
+Whenever a bug report is composed, the answer goes into the body as a fenced block under
+**What the app knows**, after *Where* and before *Build*, capped at 8,000 characters. Null, a
+blank answer, or a hook that throws adds nothing, and ideas never ask.
 
-The sheet is a scrolling column, and Compose already brings a focused text field into view inside
-a scroll — so the field was being scrolled to, faithfully, into a region the keyboard was covering.
-Nothing in the sheet knew the bottom of the screen had moved. The caret stayed where it was and the
-words went under the keys, which from the outside looks like the field itself has broken.
+Web Tools is the first user: its issues used to arrive with the page's navigation log, the wall
+decisions, the engine version and whether the bridge extension was connected, and moving it onto
+this library would have dropped all of that. Now it rides along. A player can attach the stream
+it was on the same way.
 
-One inset fixes it: the column is offset by the keyboard's height, and the scrolling that was
-already happening then lands somewhere visible.
-
-This is the sheet every app files reports from, so the fix reaches all of them — but only as each
-one picks up this version. Consumers pin, and the bump PRs this release opens are what actually
-deliver it.
-
-Fixes [light-reports#134].
+Nothing else changed. Apps that never set the hook get the body they had.

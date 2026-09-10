@@ -50,6 +50,16 @@ object LightReport {
     /** False until [install] has been called. Everything in the module no-ops until it is. */
     @Volatile
     var installed: Boolean = false
+
+    /**
+     * What the app knows that the phone does not: a page log, an engine version, the state of
+     * a connection. Asked at the moment a bug report is composed, so it should be cheap and
+     * must not throw; the answer rides in the body as a fenced block, capped at 8,000
+     * characters. Null, or a blank answer, adds nothing. A browser attaches its navigation
+     * log here; a player, the stream it was on.
+     */
+    @Volatile
+    var details: (() -> String?)? = null
         private set
 
     /**
