@@ -99,7 +99,8 @@ object Reports {
     private const val TIMEOUT_MS = 45_000
 
     /** True when this build can actually send. False means reports pile up in the queue. */
-    fun canSend(): Boolean = LightReport.relay.isNotBlank()
+    // https only: a report carries a screenshot and crash detail, and the relay is a public URL.
+    fun canSend(): Boolean = LightReport.relay.startsWith("https://")
 
     fun pendingCount(context: Context): Int = queued(context).size
 
@@ -376,10 +377,9 @@ object Reports {
     private fun post(payload: JSONObject): Boolean {
         // The relay, not api.github.com: the key that files the issue lives on the relay and
         // nowhere in the APK. It answers with the same codes GitHub would for the queue's sake.
-        val url = URL(LightReport.relay)
         var conn: HttpURLConnection? = null
         return runCatching {
-            conn = (url.openConnection() as HttpURLConnection).apply {
+            conn = (URL(LightReport.relay).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS

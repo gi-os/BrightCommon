@@ -14,7 +14,9 @@
 // Status codes are chosen for the queue on the phone, which deletes a report on 400, 413 or 422
 // (it can never post) and keeps it for a later launch on anything else.
 
-const MAX_REQUEST_BYTES = 70_000;
+// Room for a full 65,536-character body even when every character is multi-byte and
+// JSON-escaped; the character limit below is the one that matters.
+const MAX_REQUEST_BYTES = 400_000;
 const MAX_TITLE = 256;
 // GitHub refuses an issue body over 65,536 characters; light-common trims to 60,000 first.
 const MAX_BODY = 65_536;
@@ -37,8 +39,8 @@ export default {
 
     const declared = Number(request.headers.get("Content-Length") || "0");
     if (declared > MAX_REQUEST_BYTES) return text(413, "too large");
-    const raw = await request.text();
-    if (new TextEncoder().encode(raw).length > MAX_REQUEST_BYTES) return text(413, "too large");
+    const raw = await readCapped(request, MAX_REQUEST_BYTES);
+    if (raw === null) return text(413, "too large");
 
     const report = parse(raw);
     if (typeof report === "string") return text(400, report);
@@ -89,6 +91,31 @@ export function parse(raw) {
   // Only these three fields go on. Anything else a caller sends (assignees, milestone, a
   // different repo) is dropped rather than forwarded.
   return { title, body, labels };
+}
+
+/** The body as text, or null once it passes `cap` bytes; never buffers more than that. */
+async function readCapped(request, cap) {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 function text(status, message, headers = {}) {

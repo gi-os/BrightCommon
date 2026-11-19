@@ -52,9 +52,29 @@ test("a malformed report is a 400 and never reaches GitHub", async () => {
 });
 
 test("an oversized request is a 413", async () => {
-  const res = await worker.fetch(post({ ...good, body: "x".repeat(80_000) }), env);
+  const res = await worker.fetch(post({ ...good, body: "x".repeat(500_000) }), env);
   assert.equal(res.status, 413);
   assert.equal(calls.length, 0);
+});
+
+test("a streamed body with no Content-Length is still capped", async () => {
+  const chunk = new Uint8Array(64 * 1024).fill(120);
+  let sent = 0;
+  const body = new ReadableStream({
+    pull(c) {
+      if (sent++ > 20) c.close();
+      else c.enqueue(chunk);
+    },
+  });
+  const req = new Request("https://relay.example/report", { method: "POST", body, duplex: "half" });
+  assert.equal(req.headers.get("Content-Length"), null);
+  assert.equal((await worker.fetch(req, env)).status, 413);
+  assert.ok(sent < 10, `read ${sent} chunks`);
+});
+
+test("a full-size multi-byte report fits", async () => {
+  const res = await worker.fetch(post({ ...good, body: "é".repeat(60_000) }), env);
+  assert.equal(res.status, 201);
 });
 
 test("wrong path and method are refused", async () => {
