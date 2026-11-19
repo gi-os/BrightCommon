@@ -1,0 +1,15 @@
+name = "light-report-relay"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+# Not secret, fine to commit. The key is set separately and never lives here:
+#   npx wrangler secret put REPORT_PAT
+[vars]
+REPORT_REPO = "gi-os/light-reports"
+
+# Per-IP cap, so a lifted URL can file a handful of junk issues a minute and no more.
+# namespace_id is any integer unique to this account; nothing has to be created first.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "4201"
+simple = { limit = 5, period = 60 }

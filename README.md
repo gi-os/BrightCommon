@@ -60,7 +60,6 @@ override fun onCreate(savedInstanceState: Bundle?) {
         context = this,
         appName = "LightTip",          // what the app is called on the phone, not the repo name
         label = "tip",                 // the triage label in light-reports
-        token = BuildConfig.REPORT_TOKEN,
     )
     ...
 }
@@ -69,6 +68,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
 `install` also arms the crash handler, so there is one call and no way to end up with reporting
 that works except for crashes. Skip it entirely and the whole feature is inert — `ReportOverlay`
 renders nothing and nothing is queued.
+
+Reports go to the relay in [`relay/`](relay/), which files the issue with a key held only as a
+Cloudflare secret. Apps carry no credential: do not add a `REPORT_TOKEN` to an app's BuildConfig.
 
 **3. Put the overlay inside your theme.**
 
