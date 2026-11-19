@@ -52,6 +52,9 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The deployed relay's URL (a repo variable, not a secret). Unset publishes a library
+          # that queues reports instead of sending them.
+          REPORT_RELAY_URL: ${{ vars.REPORT_RELAY_URL }}
 
       - name: Create the GitHub release
         uses: softprops/action-gh-release@v2

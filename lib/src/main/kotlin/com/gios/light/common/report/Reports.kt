@@ -99,7 +99,7 @@ object Reports {
     private const val TIMEOUT_MS = 45_000
 
     /** True when this build can actually send. False means reports pile up in the queue. */
-    fun canSend(): Boolean = LightReport.token.isNotBlank()
+    fun canSend(): Boolean = LightReport.relay.isNotBlank()
 
     fun pendingCount(context: Context): Int = queued(context).size
 
@@ -329,7 +329,7 @@ object Reports {
         flush(context)
     }
 
-    /** Post everything queued. Safe to call on launch; does nothing without a token. */
+    /** Post everything queued. Safe to call on launch; does nothing without a relay. */
     suspend fun flush(context: Context): Unit = withContext(Dispatchers.IO) {
         if (!canSend()) return@withContext
         for (f in queued(context)) {
@@ -374,7 +374,9 @@ object Reports {
 
     /** @return true when the issue was created, or when it never can be and should be dropped. */
     private fun post(payload: JSONObject): Boolean {
-        val url = URL("https://api.github.com/repos/${LightReport.repo}/issues")
+        // The relay, not api.github.com: the key that files the issue lives on the relay and
+        // nowhere in the APK. It answers with the same codes GitHub would for the queue's sake.
+        val url = URL(LightReport.relay)
         var conn: HttpURLConnection? = null
         return runCatching {
             conn = (url.openConnection() as HttpURLConnection).apply {
@@ -382,8 +384,6 @@ object Reports {
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
                 doOutput = true
-                setRequestProperty("Authorization", "Bearer ${LightReport.token}")
-                setRequestProperty("Accept", "application/vnd.github+json")
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("User-Agent", LightReport.appName.ifBlank { "light-common" })
             }
@@ -426,8 +426,8 @@ object Reports {
      * The picture, folded away.
      *
      * Base64 inside the body rather than an uploaded file: attaching one would need
-     * `contents: write` on a token that ships inside a sideloaded APK, and `issues: write` alone
-     * means a lifted key can only write junk into one private tracker. Collapsed in a `<details>`
+     * `contents: write` on the relay's key, which should only ever be able to file issues.
+     * Collapsed in a `<details>`
      * because 30KB of base64 is the whole issue otherwise.
      */
     private fun StringBuilder.appendShot(shot: String?) {

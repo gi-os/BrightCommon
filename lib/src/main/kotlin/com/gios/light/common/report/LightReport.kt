@@ -1,13 +1,12 @@
 package com.gios.light.common.report
 
 /**
- * What this app is, and how it is allowed to file issues.
+ * What this app is, and where its reports go.
  *
- * **This is the one thing a consuming app must set up**, and it exists because `BuildConfig`
- * does not cross a library boundary. When the report code lived inside each app it could read
- * `BuildConfig.REPORT_TOKEN` directly; a library has its own BuildConfig, not the app's, so the
- * values have to be handed in. That turns out to be the better shape anyway — the token stays a
- * build-time secret in the app that owns it, and this module never has to know how it got there.
+ * **This is the one thing a consuming app must set up.** Reports are posted to the report relay
+ * (`relay/` in this repo), which files the issue with a key that lives only on the server. No
+ * credential is compiled into an app any more: a sideloaded APK is a zip anyone can open, and
+ * the `REPORT_TOKEN` that used to ship in every BuildConfig could read the whole tracker.
  *
  * Call [install] once, early, from `MainActivity.onCreate` or an `Application`:
  *
@@ -16,7 +15,6 @@ package com.gios.light.common.report
  *     context = this,
  *     appName = "LightTip",
  *     label = "tip",
- *     token = BuildConfig.REPORT_TOKEN,
  * )
  * ```
  *
@@ -43,8 +41,12 @@ object LightReport {
     var repo: String = "gi-os/light-reports"
         private set
 
+    /**
+     * Where reports are posted. Defaults to the relay this library was published with
+     * (`REPORT_RELAY_URL` at publish time); blank means reports queue on the phone.
+     */
     @Volatile
-    internal var token: String = ""
+    var relay: String = BuildConfig.REPORT_RELAY_URL
         private set
 
     /** False until [install] has been called. Everything in the module no-ops until it is. */
@@ -63,9 +65,10 @@ object LightReport {
     var details: (() -> String?)? = null
 
     /**
-     * @param token usually `BuildConfig.REPORT_TOKEN`. Blank is fine and normal — a build with
-     *   no key still collects reports, queues them on disk, and sends them from a later build
-     *   that has one.
+     * @param token ignored. Kept so call sites written before 1.11.0 still compile; nothing
+     *   sends a key from the phone any more, so pass nothing.
+     * @param relay override for the relay URL, for a debug build pointed at a local worker.
+     *   Blank is fine — reports queue on disk and go out from a later build that has one.
      */
     @JvmStatic
     @JvmOverloads
@@ -73,13 +76,14 @@ object LightReport {
         context: android.content.Context,
         appName: String,
         label: String,
-        token: String,
+        @Suppress("UNUSED_PARAMETER") token: String = "",
         repo: String = "gi-os/light-reports",
+        relay: String = BuildConfig.REPORT_RELAY_URL,
     ) {
         this.appName = appName
         this.label = label
-        this.token = token
         this.repo = repo
+        this.relay = relay
         this.installed = true
         CrashLog.install(context)
     }
