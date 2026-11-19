@@ -1,5 +1,7 @@
 package com.gios.light.common.report
 
+import com.gios.light.common.BuildConfig
+
 /**
  * What this app is, and where its reports go.
  *
