@@ -45,7 +45,7 @@ object LightReport {
 
     /**
      * Where reports are posted. Defaults to the relay this library was published with
-     * (`REPORT_RELAY_URL` at publish time); blank means reports queue on the phone.
+     * (the production relay unless overridden by `REPORT_RELAY_URL` at publish time).
      */
     @Volatile
     var relay: String = BuildConfig.REPORT_RELAY_URL

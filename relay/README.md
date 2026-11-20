@@ -11,8 +11,9 @@ Set up once (nothing in CI deploys it):
 2. Configure the ingestion workflow in `gi-os/light-reports` with its queue credentials.
 3. From `relay/`, run `npx wrangler deploy`. The config binds `REPORTS` to `light-reports` and
    `LIMITER` to the per-IP rate limiter. Remove any old `REPORT_PAT` secret from an existing deployment.
-4. Set the repo variable `REPORT_RELAY_URL` to `https://<worker host>/report` here and in each
-   app that has its own report code, so the next build points at it.
+
+BrightCommon defaults to `https://light-report-relay.glupo.workers.dev/report`. For a different
+deployment, set the optional `REPORT_RELAY_URL` repository Actions variable before publishing.
 
 `POST /report` allows up to 400,000 request bytes and 125,000 serialized queue-message bytes
 (including the relay timestamp). Either size limit returns `413`, which the phone does not retry.
