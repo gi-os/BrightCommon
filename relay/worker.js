@@ -1,22 +1,15 @@
-// Shake-to-report relay: the one place the light-reports key lives.
-//
-// The apps used to post straight to the GitHub issues API with a PAT compiled into
-// BuildConfig. A sideloaded APK is a zip anyone can open, so that key was public, and an
-// Issues key on light-reports can read every report as well as write one: phone numbers,
-// install ids, screenshots. Now the phone posts here with no credential at all and this
-// worker files the issue with REPORT_PAT, a Cloudflare secret that never leaves Cloudflare.
-//
-// The worst anyone can do with the URL is what they could do with a report sheet: file an
-// issue into one private tracker, at the rate limit below. Nothing can be read back through it.
+// The phone posts here without credentials; the Worker only writes to a queue.
+// A private tracker workflow reads the queue and files issues.
 //
 //   POST /report   {"title": "...", "body": "...", "labels": ["notebook", "crash", "field"]}
 //
 // Status codes are chosen for the queue on the phone, which deletes a report on 400, 413 or 422
 // (it can never post) and keeps it for a later launch on anything else.
 
-// Room for a full 65,536-character body even when every character is multi-byte and
-// JSON-escaped; the character limit below is the one that matters.
+// Cap the incoming JSON separately from the normalized queue message.
 const MAX_REQUEST_BYTES = 400_000;
+// Leave room below Cloudflare's 128 KB message limit for internal metadata.
+const MAX_MESSAGE_BYTES = 125_000;
 const MAX_TITLE = 256;
 // GitHub refuses an issue body over 65,536 characters; light-common trims to 60,000 first.
 const MAX_BODY = 65_536;
@@ -29,13 +22,11 @@ export default {
     if (url.pathname !== "/report") return text(404, "not found");
     if (request.method !== "POST") return text(405, "POST only", { Allow: "POST" });
 
-    if (!env.REPORT_PAT || !env.REPORT_REPO) return text(503, "relay not configured");
+    if (!env.REPORTS || !env.LIMITER) return text(503, "relay not configured");
 
-    if (env.LIMITER) {
-      const key = request.headers.get("CF-Connecting-IP") || "unknown";
-      const { success } = await env.LIMITER.limit({ key });
-      if (!success) return text(429, "slow down");
-    }
+    const key = request.headers.get("CF-Connecting-IP") || "unknown";
+    const { success } = await env.LIMITER.limit({ key });
+    if (!success) return text(429, "slow down");
 
     const declared = Number(request.headers.get("Content-Length") || "0");
     if (declared > MAX_REQUEST_BYTES) return text(413, "too large");
@@ -45,34 +36,21 @@ export default {
     const report = parse(raw);
     if (typeof report === "string") return text(400, report);
 
-    let upstream;
+    const message = { ...report, received_at: new Date().toISOString() };
+    if (new TextEncoder().encode(JSON.stringify(message)).byteLength > MAX_MESSAGE_BYTES) {
+      return text(413, "too large");
+    }
     try {
-      upstream = await fetch(`https://api.github.com/repos/${env.REPORT_REPO}/issues`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.REPORT_PAT}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json; charset=utf-8",
-          "User-Agent": "light-report-relay",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify(report),
-      });
+      await env.REPORTS.send(message, { contentType: "json" });
     } catch {
-      return text(502, "github unreachable");
+      return text(502, "queue unavailable");
     }
 
-    if (upstream.ok) return text(201, "filed");
-    // A body GitHub will never take: the phone should drop it, not retry it forever.
-    if (upstream.status === 422) return text(422, "rejected by github");
-    if (upstream.status === 403 || upstream.status === 429) return text(429, "github rate limit");
-    // 401 or 404 mean the relay's own key or repo is wrong. That is fixed here, not on the
-    // phone, so the report must stay queued: never pass a 4xx through for it.
-    return text(502, `github ${upstream.status}`);
+    return text(201, "queued");
   },
 };
 
-/** The report as GitHub wants it, or a string saying why it is not one. */
+/** The validated report, or a string saying why it was rejected. */
 export function parse(raw) {
   let o;
   try {
