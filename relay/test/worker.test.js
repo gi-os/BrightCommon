@@ -2,15 +2,11 @@ import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import worker, { parse } from "../worker.js";
 
-const env = { REPORT_PAT: "server-side-key", REPORT_REPO: "gi-os/light-reports" };
 let calls;
-
-function reply(status) {
-  globalThis.fetch = async (url, init) => {
-    calls.push({ url, init });
-    return new Response("{}", { status });
-  };
-}
+const env = {
+  REPORTS: { send: async (message, options) => calls.push({ message, options }) },
+  LIMITER: { limit: async () => ({ success: true }) },
+};
 
 function post(body, extra = {}) {
   return new Request("https://relay.example/report", {
@@ -25,25 +21,26 @@ const good = { title: "Notebook v1.62.0 — froze", body: "### What happened", l
 
 beforeEach(() => {
   calls = [];
-  reply(201);
 });
 
-test("files the issue with the server-side key", async () => {
+test("accepts the report only after enqueueing it", async () => {
   const res = await worker.fetch(post(good), env);
   assert.equal(res.status, 201);
+  assert.equal(await res.text(), "queued");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://api.github.com/repos/gi-os/light-reports/issues");
-  assert.equal(calls[0].init.headers.Authorization, "Bearer server-side-key");
-  assert.deepEqual(JSON.parse(calls[0].init.body), good);
+  const { received_at, ...report } = calls[0].message;
+  assert.equal(new Date(received_at).toISOString(), received_at);
+  assert.deepEqual(report, good);
+  assert.deepEqual(calls[0].options, { contentType: "json" });
 });
 
-test("only title, body and labels are forwarded", async () => {
-  await worker.fetch(post({ ...good, assignees: ["someone"], repo: "gi-os/other" }), env);
-  assert.deepEqual(Object.keys(JSON.parse(calls[0].init.body)).sort(), ["body", "labels", "title"]);
-  assert.match(calls[0].url, /gi-os\/light-reports/);
+test("only validated fields and the relay timestamp are queued", async () => {
+  await worker.fetch(post({ ...good, assignees: ["someone"], repo: "gi-os/other", received_at: "fake" }), env);
+  assert.deepEqual(Object.keys(calls[0].message).sort(), ["body", "labels", "received_at", "title"]);
+  assert.notEqual(calls[0].message.received_at, "fake");
 });
 
-test("a malformed report is a 400 and never reaches GitHub", async () => {
+test("a malformed report is a 400 and never reaches the queue", async () => {
   for (const bad of ["nope", { body: "x" }, { title: "t", body: 3 }, { title: "t", body: "b", labels: ["Has Space"] }]) {
     const res = await worker.fetch(post(bad), env);
     assert.equal(res.status, 400, JSON.stringify(bad));
@@ -77,28 +74,30 @@ test("a full-size multi-byte report fits", async () => {
   assert.equal(res.status, 201);
 });
 
+test("a report that fits the character cap but exceeds the queue byte cap is a 413", async () => {
+  for (const body of ["界".repeat(60_000), "\u0000".repeat(22_000)]) {
+    const res = await worker.fetch(post({ ...good, body }), env);
+    assert.equal(res.status, 413);
+  }
+  assert.equal(calls.length, 0);
+});
+
 test("wrong path and method are refused", async () => {
   assert.equal((await worker.fetch(new Request("https://relay.example/"), env)).status, 404);
   assert.equal((await worker.fetch(new Request("https://relay.example/report"), env)).status, 405);
 });
 
 test("an unconfigured relay keeps reports queued", async () => {
-  const res = await worker.fetch(post(good), {});
-  assert.equal(res.status, 503);
+  for (const bindings of [{ REPORTS: env.REPORTS }, { LIMITER: env.LIMITER }]) {
+    const res = await worker.fetch(post(good), bindings);
+    assert.equal(res.status, 503);
+  }
+  assert.equal(calls.length, 0);
 });
 
-test("a bad relay key is a 502, so the phone keeps the report", async () => {
-  reply(401);
-  assert.equal((await worker.fetch(post(good), env)).status, 502);
-  reply(404);
-  assert.equal((await worker.fetch(post(good), env)).status, 502);
-});
-
-test("GitHub's own refusals map to what the phone queue expects", async () => {
-  reply(422);
-  assert.equal((await worker.fetch(post(good), env)).status, 422);
-  reply(403);
-  assert.equal((await worker.fetch(post(good), env)).status, 429);
+test("enqueue failure is a 502, so the phone keeps the report", async () => {
+  const unavailable = { ...env, REPORTS: { send: async () => { throw new Error("unavailable"); } } };
+  assert.equal((await worker.fetch(post(good), unavailable)).status, 502);
 });
 
 test("the rate limiter is keyed on the caller's IP", async () => {
