@@ -8,6 +8,8 @@ plugins {
 // Bumped by hand, one minor step per change, the same rule the apps follow. The publish
 // workflow reads this to tag the release, so it is the single source of truth for the version.
 val libraryVersion = "1.11.0"
+val reportRelayUrl = System.getenv("REPORT_RELAY_URL")?.trim()?.takeIf { it.isNotEmpty() }
+    ?: "https://light-report-relay.glupo.workers.dev/report"
 
 android {
     namespace = "com.gios.light.common"
@@ -22,9 +24,7 @@ android {
         // a hand-copied constant still compiles when it goes stale, and the value's only job
         // is to be true on a diagnostic screen.
         buildConfigField("String", "LIGHT_COMMON_VERSION", "\"$libraryVersion\"")
-        // Where reports are posted: the relay in relay/, never api.github.com. A URL, not a
-        // secret: the key that files the issue lives on the relay. Blank queues reports.
-        buildConfigField("String", "REPORT_RELAY_URL", "\"${System.getenv("REPORT_RELAY_URL") ?: ""}\"")
+        buildConfigField("String", "REPORT_RELAY_URL", "\"$reportRelayUrl\"")
     }
 
     compileOptions {

@@ -69,8 +69,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
 that works except for crashes. Skip it entirely and the whole feature is inert — `ReportOverlay`
 renders nothing and nothing is queued.
 
-Reports go to the relay in [`relay/`](relay/), which files the issue with a key held only as a
-Cloudflare secret. Apps carry no credential: do not add a `REPORT_TOKEN` to an app's BuildConfig.
+Reports go to the [production relay](https://light-report-relay.glupo.workers.dev/report),
+which queues them for the private tracker to file. Apps carry no credential: do not add a
+`REPORT_TOKEN` to an app's BuildConfig. To publish with a different relay URL, set the optional
+`REPORT_RELAY_URL` repository Actions variable.
 
 **3. Put the overlay inside your theme.**
 
